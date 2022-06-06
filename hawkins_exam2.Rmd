@@ -1,0 +1,780 @@
+---
+title: "Exam 2"
+author: "Nate Hawkins"
+date: "3/14/2021"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r}
+library(R2jags)
+library(dplyr)
+library(brms)
+library(loo)
+library(rstan)
+```
+
+
+This is a take-home exam.  The exam is due on Tuesday, March 23, at 9:30 am.  Please complete the exam
+using a Markdown file.  Please change the **author** field in the .Rmd file from "Stat 451" to your name.
+Please email your 
+completed exam to gwf@byu.edu and to dteuscher.37.12@gmail.com prior to the 9:30 am deadline.  Please email both your Mardkown file (.Rmd) and
+your output file.  You may use whatever format is most convenient for your output document.  
+Use the following convention to name your files (assumeing you chose .html as your output format):
+'lastname_exam1.Rmd' and 'lastname_exam1.html'
+where lastname is replaced with your last name.  Make sure you show your code as well as your answers.
+
+Take-home exams should
+be your own work.  However, you are welcome to use class notes, and help documentation publicly 
+available for all the programs we have used.  You should not search the web for similar problems
+which someone else may have solved.  You should not discuss the exam with any living person.  
+The data for the exam are in data files that I will email to you.
+
+You are responsible for making sure that your chains have converged appropriately by examining such things as
+the Raftery-Louis diagnostic and the effective sample size.  You will not be asked to do this formally in the 
+exam, but if your chains are not correct, you will get wrong answers.
+
+For the first set of questions we will be using the data file **influent.dat**.  You should have received that
+data file with the exam.  Water flows into the Mississippi river from a number of streams and rivers. These
+sources carry nitrogen into the river.  In the data set, there are six sources of the nitrogen, which 
+are a random sample of the many hundreds of streams and rivers that flow into the Mississippi.  These 
+sources have been classified by type.  The three types are: (1) no farm land in watershed, (2) less than
+50% farm land in watershed, and (3) more than 50% farmland in watershed.  These three types are the only
+types that we seek to analyze.  In the data file, the three columns are river source, nitrogen, and type.
+
+1. First read in the data and print out the first six rows of the data.
+
+```{r}
+influent <- read.table("influent.dat")
+colnames(influent) <- c("source", "nitrogen", "type")
+
+```
+
+#Need to check this without adapt_delta
+
+2.  Ignoring the source, use brm to write a model to find the differences in type.  Use priors of
+normal(0,100) for the type effects, and gamma(2,.1) for $\sigma_{error}$.  Remember that the kind of
+variable you are working with will make a difference. What is the level of nitrogen estimated for type 3.
+
+Level of nitrogen estimated for type 3 is 36.36
+
+```{r}
+source = influent$source
+nitrogen = influent$nitrogen
+type = influent$type
+influent$vtype = as.factor(influent$type)
+
+
+fit1 <- brm(formula = nitrogen ~ -1 + vtype, data = influent, 
+            family = "gaussian",
+            prior = c(set_prior("normal(0,100)", class = "b"),
+                      set_prior("gamma(2,.1)", class = "sigma")),
+            warmup = 1000, iter = 5000, chains = 4, 
+            #control = list(adapt_delta = 0.98),
+            save_pars = save_pars(all = TRUE))
+
+summary(fit1)
+
+```
+
+```{r, eval = FALSE}
+chains <- as.matrix(fit1)
+dim(chains)
+head(chains)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+3. What is the looic for this model?
+
+The looic is 255.6
+```{r}
+loo1 <- loo(fit1)
+print(loo1)
+```
+
+
+4.  Now run the same model using JAGS.  Use the same priors for the type parameters (remember,
+normal priors in JAGS use precision), but use a gamma(5,.1) for $\sigma^2_{error}$.  What is the level of nitrogen estimated for type 3?
+
+```{r}
+mdl <- "
+
+model {
+
+  for(i in 1:37){
+    nitrogen[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- beta[type[i]]
+  }
+  
+  # Priors
+  for(i in 1:3){
+    beta[i] ~ dnorm(0, 0.0001)
+  }
+  
+  s2error ~ dgamma(5, 0.1)
+
+}
+"
+
+writeLines(mdl, 'fit2.txt')
+
+source = influent$source
+nitrogen = influent$nitrogen
+type = influent$type
+
+data.jags <- c('nitrogen', 'type')
+parms <- c('beta' ,'s2error')
+
+fit2 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit2.txt', inits = NULL,
+                  n.iter = 20000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+fit2
+```
+
+```{r eval = FALSE}
+sims <- as.mcmc(fit2)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+5.  What is the DIC of the above model?
+
+DIC is 255.3
+
+6.  Now we want to account for the variance in sources to make inference.  Redo the model in 
+brm, but now put source in the model appropriately.  Use a gamma(2,.1) prior for $\sigma_{source}$.
+The other priors can stay the same.  Now what is the estimate for the type 3 mean?
+
+Estimate for type 3 mean is 12.24.
+This plus whatever the effect for whatever source it is.
+
+```{r}
+
+fit3 <- brm(formula = nitrogen ~ -1 + vtype + (1|source), data = influent, 
+            family = "gaussian",
+            prior = c(set_prior("normal(0,10)", class = "b"),
+                      set_prior("gamma(2,.1)", class = "sigma"),
+                      set_prior("gamma(2,.1)", class = "sd")),
+            warmup = 1000, iter = 20000, chains = 4, thin = 10,
+            control = list(adapt_delta = 0.98),
+            save_pars = save_pars(all = TRUE))
+summary(fit3)
+
+fit3$fit
+```
+
+
+```{r}
+# Diagnostics look good
+chains <- as.matrix(fit3)
+dim(chains)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+
+```
+
+
+7.  What is the looic for this model?
+
+looic is 252.7
+
+```{r}
+loo3 <- loo(fit3)
+```
+
+
+8.  Which model (problem 2 or problem 6 is better?  Why?
+
+The model for problem 6 is better. It has a looic of 252.7 compared to 255.3. Clearly accounting for source is important.
+
+9.  Now do the model with the variance for sources accounted for in JAGS.  Use
+a gamma(5,.1) for the variance component $\sigma^2_{source}$. What is the 
+estimate for the type 3 mean?
+
+Estimate for type 3 mean is 36.24.
+
+```{r}
+mdl <- "
+
+model {
+
+  for(i in 1:37){
+    nitrogen[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- beta[type[i]] + u[source[i]]
+  }
+  
+  # Priors
+  for(i in 1:3){
+    beta[i] ~ dnorm(0, 0.0001)
+  }
+  for(i in 1:6){
+    u[i] ~ dnorm(0,1/s_source)
+  }
+  
+  s2error ~ dgamma(5, 0.1)
+  s_source ~ dgamma(5,0.1)
+
+}
+"
+
+writeLines(mdl, 'fit4.txt')
+
+source = influent$source
+nitrogen = influent$nitrogen
+type = influent$type
+
+data.jags <- c('nitrogen', 'type', 'source')
+parms <- c('beta' , 'u', 's2error')
+
+fit4 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit4.txt', inits = NULL,
+                  n.iter = 20000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+(fit4)
+```
+
+```{r, eval = FALSE}
+sims <- as.mcmc(fit4)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+
+10. What is the DIC for this model?
+
+DIC is 252.0
+
+11.  Which model (problem 4 or problem 9) is better?  Why?
+
+DIC for model 9 is better, it is lower. Therefore there is value in accounting for the which source it comes from. We can now make inference for sources.
+
+We will be using the data file **pig.dat** for the the next set of questions.  You should have received that data file.
+The data set is from a feeding experiment comparing 3 treatments (basically how much of a particular additive was included
+in the food ration) on young hogs over the first 30 days of life.  The measurements were taken every 6 days.  The pig number
+identifies the pig within a treatment.  That is, pig 1 in trt 1 is not the same pig as pig 1 in trt 2.
+
+12.  Plot the weight on the y-axis and the day  on the x-axis, ignoring the trt and the pig. 
+
+```{r}
+pig <- read.table("pig.dat", header = TRUE)
+head(pig)
+ggplot(data = pig, mapping  = aes(x = day, y = weight)) + 
+  geom_point()
+```
+
+
+13.  You will note from your plot that weight gain is fairly linear over the first 15 days or so, and then tails off.
+To account for this, we are going to add a quadratic term for day.  That is, include a column for day^2 in the data
+set. Print the first 6 rows of the new data set.
+
+```{r}
+pig$day2 = (pig$day)^2
+head(pig)
+```
+
+
+14. Using JAGS, run a model with an intercept, linear term, and quadratic term for the overall data.  You are essentially
+fitting the data you plotted, with no concern about treatments or the multiple observations on each pig.  Use dnorm(0,0.0001) priors
+for the coefficients of the model
+(the $\beta$'s), and a dgamma(1.1,.1) as the prior for $\sigma^2_{error}$.  Print a summary of your model.  What is the
+DIC of the model?  
+
+DIC is 2073
+
+```{r}
+mdl <- "
+  model {
+  
+  for (i in 1:360){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0 + b1*day[i] + b2*day2[i]
+  }
+  
+  b0 ~ dnorm(0, 0.0001)
+  b1 ~ dnorm(0, 0.0001)
+  b2 ~ dnorm(0, 0.0001)
+  vv ~ dgamma(1.1, 0.1)
+  }
+
+"
+day = pig$day
+day2 = pig$day2
+weight = pig$weight
+
+writeLines(mdl, 'fit5.txt')
+
+
+data.jags <- c('weight', 'day', 'day2')
+parms <- c('b0' , 'b1', 'b2', 'vv')
+
+fit5 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit5.txt', inits = NULL,
+                  n.iter = 12000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+(fit5)
+```
+
+```{r, eval = FALSE}
+sims <- as.mcmc(fit5)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+
+```
+
+
+15.  Run the same model using brm.  Use the same priors for the $\beta$'s (which will now be normal(0,100) since brm
+works in standard deviations), and a gamma(1.1,.5) prior for the 
+standard deviation ($sigma_{error}$).  Print a summary of your model. What is the looic of the model?
+
+looic is 2073.6
+
+```{r}
+
+fit6 <- brm(formula = weight ~  day + day2, data = pig, 
+            family = "gaussian",
+            prior = c(set_prior("normal(0,100)", class = "b"),
+                      #set_prior("normal(0,100)", class = "a"),
+                      set_prior("gamma(1.1,0.5)", class = "sigma")),
+            warmup = 1000, iter = 5000, chains = 4, 
+            #control = list(adapt_delta = 0.98),
+            save_pars = save_pars(all = TRUE), silent = TRUE)
+
+(fit6)
+
+```
+
+```{r, eval = FALSE}
+
+# Convergence and ESS are good
+chains <- as.matrix(fit6)
+dim(chains)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+
+# looic
+loo(fit6)
+```
+
+
+16. Using the estimated coefficients from either the JAGS or the brm model, add a best fit line to the plot you
+made in problem 12.
+
+```{r}
+
+ggplot(data = pig, mapping  = aes(x = day, y = weight)) + 
+  geom_point() + 
+  geom_abline(intercept = 14.73, slope = 1.69)
+
+
+
+```
+
+
+17.  Using JAGS, run a model with an intercept, linear slope, and quadratic slope for each of the trt's.  That is,
+you will be computing 9 $\beta$'s, 3 for each trt.  Assume all the data are independent (that is, we are not
+worried about the different pigs at this point).  Use dnorm(0,0.0001) priors for the coefficients of the model
+(the $\beta$'s), and a dgamma(1.1,.1) as the prior for $\sigma^2_{error}$.  While you have now
+accounted for the different treatments, you are still ignoring that there are multiple measurements on each animal.  
+What is the DIC for this model?
+
+DIC is 1977.4
+
+```{r}
+mdl <- "
+  model {
+  
+  for (i in 1:360){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[trt[i]] + b1[trt[i]]*day[i] + b2[trt[i]]*day2[i]
+  }
+  
+  for(i in 1:3){
+    b0[i] ~ dnorm(0, 0.0001)
+    b1[i] ~ dnorm(0, 0.0001)
+    b2[i] ~ dnorm(0, 0.0001)
+  }
+  
+  vv ~ dgamma(1.1, 0.1)
+  }
+
+"
+trt = pig$trt
+day = pig$day
+day2 = pig$day2
+weight = pig$weight
+
+writeLines(mdl, 'fit7.txt')
+
+
+data.jags <- c('weight', 'day', 'day2', 'trt')
+parms <- c('b0' , 'b1', 'b2', 'vv')
+
+fit7 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit7.txt', inits = NULL,
+                  n.iter = 12000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+fit7
+
+```
+
+```{r, eval = FALSE}
+
+# Diagnostics are good
+sims <- as.mcmc(fit7)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+18. Repeat this analysis using brm.  You will need to create a factor variable from trt (that is, let a variable be as.factor(pig$trt)).
+Use the same priors for the $\beta$'s and a gamma(1.1,.5) as the prior for $\sigma^2_{error}$.  Print a summary of the model.  What is the looic?
+
+looic is 1978.6
+```{r}
+pig$trtf = as.factor(pig$trt)
+fit8 <- brm(formula = weight ~  -1 + trtf + trtf:day + trtf:day2 , data = pig, 
+            family = "gaussian",
+            prior = c(set_prior("normal(0,100)", class = "b"),
+                      set_prior("gamma(1.1,0.5)", class = "sigma")),
+            warmup = 1000, iter = 5000, chains = 4, 
+            #control = list(adapt_delta = 0.98),
+            save_pars = save_pars(all = TRUE))
+summary(fit8)
+
+```
+
+```{r, eval = FALSE}
+
+# Convergence and ESS are good
+chains <- as.matrix(fit8)
+dim(chains)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+
+```
+
+```{r}
+# looic
+loo(fit8)
+```
+
+
+19.  Now we are going to take into account that there are multiple measures on each animal to properly account for this information
+when we make inference.  Using JAGS, create a term for a random deviation from the intercept for the intercepts only (this is sometimes
+referred to as a random coefficients approach).  That is, we are assuming each pig is a random
+draw from the population of all pigs.  You will need to account for the numbering of the pigs in the data set, since 
+pig 1 in trt1 is not the same as pig 1 in trt 2.  In this model you will be estimating 60 intercepts (20 pigs in each of the
+three treatments).  Use a gamma(1.1,.1)  prior for $\sigma^2_{intercepts}$.  You will also need a prior for all the
+terms that are deviations from the overall intercept.  Use a normal with a mean of 0, and a precision that is $1/\sigma^2_{intercepts}$.
+What is the DIC?
+
+DIC is 1696.2
+
+```{r}
+
+pig$newpig <- rep(1:60, each = 6)
+
+
+mdl <- "
+  model {
+  
+  for (i in 1:360){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[trt[i]] + b1[trt[i]]*day[i] + b2[trt[i]]*day2[i] + u0[newpig[i]]
+  }
+  
+  for(i in 1:3){
+    b0[i] ~ dnorm(0, 0.0001)
+    b1[i] ~ dnorm(0, 0.0001)
+    b2[i] ~ dnorm(0, 0.0001)
+  }
+  
+  for(i in 1:60){
+    u0[i] ~ dnorm(0,1/vvint)
+  }
+  
+  vvint ~ dgamma(1.1, 0.1)
+  vv ~ dgamma(1.1, 0.1)
+}
+
+"
+newpig <- pig$newpig
+trt = pig$trt
+day = pig$day
+day2 = pig$day2
+weight = pig$weight
+
+writeLines(mdl, 'fit9.txt')
+
+
+data.jags <- c('weight', 'day', 'day2', 'trt', 'newpig')
+parms <- c('b0' , 'b1', 'b2','u0', 'vv', 'vvint')
+
+fit9 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit9.txt', inits = NULL,
+                  n.iter = 8000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+fit9
+
+```
+
+```{r, eval = FALSE}
+
+# Diagnostics are good
+sims <- as.mcmc(fit9)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+20. Continuing in JAGS, add a random coefficient term for the deviations from the linear term in the model.  You will now
+have random coefficients for both the intercepts and the linear term (slopes).  You can use a gamma(1.1,.1)  prior for $\sigma^2_{linear}$.
+You will also need a prior for all the
+terms that are deviations from the overall linear term (slopes) .  Use a normal with a mean of 0, and a precision that is $1/\sigma^2_{linear}$. 
+What is the DIC?
+
+DIC is 1451.0
+
+```{r}
+mdl <- "
+  model {
+  
+  for (i in 1:360){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[trt[i]] + b1[trt[i]]*day[i] + b2[trt[i]]*day2[i] + u0[newpig[i]] + u1[newpig[i]]*day[i]
+  }
+  
+  for(i in 1:3){
+    b0[i] ~ dnorm(0, 0.0001)
+    b1[i] ~ dnorm(0, 0.0001)
+    b2[i] ~ dnorm(0, 0.0001)
+  }
+  
+  for(i in 1:60){
+    u0[i] ~ dnorm(0,1/vvint)
+    u1[i] ~ dnorm(0, 1/vvslp)
+  }
+  
+  vvslp ~ dgamma(1.1, 0.1)
+  vvint ~ dgamma(1.1, 0.1)
+  vv ~ dgamma(1.1, 0.1)
+}
+
+"
+newpig <- pig$newpig
+trt = pig$trt
+day = pig$day
+day2 = pig$day2
+weight = pig$weight
+
+writeLines(mdl, 'fit10.txt')
+
+
+data.jags <- c('weight', 'day', 'day2', 'trt', 'newpig')
+parms <- c('b0' , 'b1', 'b2','u0','u1', 'vv', 'vvint', 'vvslp')
+
+fit10 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit10.txt', inits = NULL,
+                  n.iter = 20000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+fit10
+
+```
+
+```{r, eval = FALSE}
+
+# Diagnostics are good
+sims <- as.mcmc(fit10)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+21.  Continuing in JAGS, add a random coefficient term for the deviations from the quadratic term in the model.  You will now
+have random coefficients for the intercepts, the linear term (slopes), and the quadratic term.  You can use a gamma(1.1,.1)  prior for $\sigma^2_{quadratic}$.
+You will also need a prior for all the
+terms that are deviations from the overall quadratic term.  Use a normal with a mean of 0, and a precision that is $1/\sigma^2_{quadratic}$. 
+What is the DIC?
+
+DIC is 1476.5
+
+```{r}
+mdl <- "
+  model {
+  
+  for (i in 1:360){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[trt[i]] + b1[trt[i]]*day[i] + b2[trt[i]]*day2[i] + u0[newpig[i]] + u1[newpig[i]]*day[i] + u2[newpig[i]]*day2[i]
+  }
+  
+  for(i in 1:3){
+    b0[i] ~ dnorm(0, 0.0001)
+    b1[i] ~ dnorm(0, 0.0001)
+    b2[i] ~ dnorm(0, 0.0001)
+  }
+  
+  for(i in 1:60){
+    u0[i] ~ dnorm(0,1/vvint)
+    u1[i] ~ dnorm(0, 1/vvslp)
+    u2[i] ~ dnorm(0, 1/vvslp2)
+  }
+  
+  vvslp2 ~ dgamma(1.1, 0.1)
+  vvslp ~ dgamma(1.1, 0.1)
+  vvint ~ dgamma(1.1, 0.1)
+  vv ~ dgamma(1.1, 0.1)
+}
+
+"
+newpig <- pig$newpig
+trt = pig$trt
+day = pig$day
+day2 = pig$day2
+weight = pig$weight
+
+writeLines(mdl, 'fit11.txt')
+
+
+data.jags <- c('weight', 'day', 'day2', 'trt', 'newpig')
+parms <- c('b0' , 'b1', 'b2','u0','u1', 'vv', 'vvint', 'vvslp')
+
+fit11 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit11.txt', inits = NULL,
+                  n.iter = 30000, n.thin = 5, n.burnin = 2000,
+                  n.chains = 5)
+fit11
+
+```
+
+```{r, eval = FALSE}
+
+sims <- as.mcmc(fit10)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+
+
+```
+
+
+22.  Using DIC, which of the models that allow inference over all pigs would you choose?
+
+Using DIC I would choose the model from question 20. This model just has random coefficients for the intercept and the linear day term. Adding a random effect for pig on the quadratic day term does not improve the model.
+
+Problems 23 and 24 are not required.  If completed they will be worth bonus points.  10 points for problem 23, and 5 points
+for problem 24.
+
+23.  Since brm does not do well with these types of models, now you will do the work in Stan.  Create a hierarchical model with
+hierarchical terms for both the intercepts and linear terms (slopes), but not for the quadratic term.  This is a hierarchical model
+that is much like the random coefficients model in number 20.  Use normal priors with means of 0 and standard deviations of 100 where appropriate, and gamma(1.1,.5) priors for the variance terms.  What are means of the chains for the overall intercept in treatment 1, the overall
+linear term coefficient (slope) in treatment 1, and the overall quadratic term coefficient in treatment 1?
+
+Intercept for treatment 1 is 18.5, Linear term for treatment 1 is 0.85
+
+```{r}
+
+model <- "
+
+data { 
+  int <lower = 1> N;
+  int q;
+  real weight[N];
+  int day[N];
+  int trt[N];
+}
+
+parameters {
+  real alpha[q];
+  real beta[q];
+  real mu_alpha;
+  real mu_beta;
+  real <lower = 0> serr;
+  real <lower = 0> salpha;
+  real <lower = 0> sbeta;
+}
+
+
+model {
+  mu_alpha ~ normal(0, 100);
+  mu_beta ~ normal(0, 100);
+  alpha ~ normal(mu_alpha, salpha);
+  beta ~ normal(mu_beta, sbeta);
+  serr ~ gamma(1.1, 0.5);
+  salpha ~ gamma(1.1, 0.5);
+  sbeta ~ gamma(1.1, .5);
+  for(i in 1:N){
+    weight[i] ~ normal(alpha[trt[i]] + beta[trt[i]] * day[i], serr);
+  }
+}
+
+
+generated quantities {
+  vector[N] log_lik;
+  real s2error;
+  real s2int;
+  real s2slope;
+  s2error = serr*serr;
+  s2int = salpha*salpha;
+  s2slope = sbeta*sbeta;
+  for (i in 1:N) log_lik[i] = normal_lpdf(weight[i] | alpha[trt[i]] + beta[trt[i]]*day[i], serr);
+}
+
+"
+
+writeLines(model, 'hier.stan')
+trt = pig$trt
+day = pig$day
+weight = pig$weight
+N <- 360
+q <- 3
+hier_dat <- list(N=N, weight = weight, trt = trt, day = day, q=q)
+fit12 <- stan(file = "hier.stan", data = hier_dat, iter = 11000, 
+            warmup = 1000, chains = 4, thin = 2)
+
+
+chains <- as.matrix(fit12)
+dim(chains)
+sims <- as.mcmc(chains)
+```
+
+```{r}
+ggplot(data = pig, mapping  = aes(x = day, y = weight, col = trtf)) + 
+  geom_point() + 
+  geom_abline(intercept = 18.4, slope = 0.84, col = "orange") + 
+  geom_abline(intercept = 19.38, slope = 0.82, col = "green") + 
+  geom_abline(intercept = 17.664, slope = 0.663, col = "blue")
+```
+
+
+24. Compute the waic for the model in problem 23.
+
+waic is 2145.3
+
+```{r}
+llfit <- extract_log_lik(fit12, parameter_name = "log_lik",
+                         merge_chains = TRUE)
+waic(llfit)
+```
+

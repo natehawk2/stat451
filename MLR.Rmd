@@ -1,0 +1,93 @@
+---
+title: "MLR in class"
+author: "Nathan Hawkins"
+date: "2/4/2021"
+output: html_document
+---
+
+```{r}
+library(R2jags)
+vo2 <- read.table("vo2.dat", header = TRUE)
+head(vo2)
+dim(vo2)
+plot(density(vo2$BMI))
+hist(vo2$MaxVO2ML)
+```
+
+```{r}
+library(R2jags)
+mdl <- "
+  model {
+  
+  for(i in 1:120){
+    y[i] ~ dnorm(mu[i], prec)
+    mu[i] <- b0 +  bgen*gender[i] + bbmi*bmi[i] + brpe*rpe[i]+ bhr*hr[i] + bmphhr*mphhr[i]
+  }
+  
+  b0 ~ dnorm(0 , .001)
+  bgen ~ dnorm(0, .001)
+  bbmi ~ dnorm(0, .001)
+  brpe ~ dnorm(0, .001)
+  bhr ~ dnorm(0, .001)
+  bmphhr ~ dnorm(0, .001)
+  
+  prec <- 1/vv
+  vv ~ dgamma(1.5, 0.2)
+  
+  }
+
+"
+#Assing simple names for covariates
+mph <- vo2$MPH
+bmi <- vo2$BMI
+gender <- vo2$Gender
+y <- vo2$MaxVO2ML
+rpe <- vo2$RPE
+hr <- vo2$HR
+age <- vo2$Age1
+
+
+# Standardize the covariates
+mph <- (mph-mean(mph))/sd(mph)
+bmi <- (bmi-mean(bmi))/sd(bmi)
+gender <- (gender-mean(gender))/sd(gender)
+rpe <- (rpe-mean(rpe))/sd(rpe)
+age <- (age-mean(age))/sd(age)
+hr <- (hr-mean(hr))/sd(hr)
+mphhr <- mph*hr
+
+
+
+
+
+writeLines(mdl, 'vo2_v2.txt')
+
+#What to use
+data.jags <- c('y', 'gender', 'bmi', 'rpe', 'mphhr', 'hr')
+
+#What to call it in the output
+parms.jags <- c('b0', "brpe", 'bgen', 'bbmi', 'bmphhr', 'vv', 'bhr')
+
+vo2v2.sim <- jags(data= data.jags, parameters.to.save = parms.jags,
+                  model.file = 'vo2_v2.txt', inits = NULL,
+                  n.iter = 6000, n.thin = 1, n.chains = 4,
+                  n.burnin = 1000)
+
+
+vo2v2.sim
+
+```
+
+
+
+```{r}
+install.packages("BayesVarSel")
+install.packages("BayesVarSel", dependencies = TRUE, INSTALL_opts = '--no-lock')
+
+remove.packages('C:\Users\nateh\Documents\R\win-library\4.0/00LOCK')
+library(BayesVarSel)
+```
+
+
+
+

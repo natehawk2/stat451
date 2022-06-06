@@ -1,0 +1,18 @@
+model {
+  
+  for(i in 1:27){
+    scrap[i] ~ dnorm(mu[i], 1/vv);
+    mu[i] <- b0[line[i]] + b1*speed[i];
+  }
+  
+  for(i in 1:2){
+  b0[i] ~ dnorm(30, .001);
+  }
+  
+  b1 ~ dnorm(0, 0.01);
+  vv ~ dgamma(1.5, 0.0125);
+  
+  }
+  
+
+

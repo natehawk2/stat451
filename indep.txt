@@ -1,0 +1,23 @@
+
+
+model {
+
+  for(i in 1:21){
+    sales[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- presales[tmt[i]] + u[tmt[i]]
+  }
+  
+  # Priors
+  for(i in 1:3){
+    tmt[i] ~ dnorm(70, 0.01)
+  }
+  
+  for(i in 1:3){
+    u[i] ~ dnorm(0, 1/s2tmt)
+  }
+  
+  s2error ~ dgamma(1.1, 0.1)
+  s2tmt ~ dgamma(1.1, 0.1)
+
+}
+

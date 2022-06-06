@@ -1,0 +1,24 @@
+
+
+model {
+
+  for(i in 1:60){
+    response[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- beta[trt[i]] + u[blk[i]]
+  }
+  
+  # Priors
+  for(i in 1:15){
+    beta[i] ~ dnorm(0, 0.01)
+  }
+  
+
+  for(i in 1:15){
+    u[i] ~ dnorm(0, 1/s2blk)
+  }
+  
+  s2error ~ dgamma(1.1, 0.1)
+  s2blk ~ dgamma(1.1, 0.1)
+
+}
+

@@ -1,0 +1,676 @@
+---
+title: "Exam 3"
+author: "Nate Hawkins"
+date: "4/6/2021"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a take-home exam.  The exam is due on Tuesday, April 13, at 9:30 am.  Please complete the exam
+using a Markdown file.  Please change the **author** field in the .Rmd file from "Stat 451" to your name.
+Please email your 
+completed exam to gwf@byu.edu and to dteuscher.37.12@gmail.com prior to the 9:30 am deadline.  Please email both your Mardkown file (.Rmd) and
+your output file.  You may use whatever format is most convenient for your output document.  
+
+Use the following convention to name your files (assuming you chose .html as your output format):
+'lastname_exam3.Rmd' and 'lastname_exam3.html'
+where lastname is replaced with your last name.  Make sure you show your code as well as your answers.
+
+Take-home exams should
+be your own work.  However, you are welcome to use class notes, class videos, and help documentation publicly 
+available for all the programs we have used.  You should not search the web for similar problems
+which someone else may have solved.  You should not discuss the exam with any living person.  
+The data for the exam are in data files that I will email to you.
+
+You will be given pretty explicit directions on number of iterations, burnin, seed, etc. so my answers will match yours.  Please follow
+those directions carefully.
+
+For the first set of problems we will be using the data file **dyes.dat**.  These data concern variation in batches of material being dyed.  The file contains rows and five columns.  Each row is a different batch with five repeated 
+measurements taken on that batch.  Thus, there are six batches, with five measurements taken on each batch.  You may
+reorder the data in the file if you find it useful.
+
+1.  What is the sample variance for all the data in the data file.  That is, what is the overall sample variance for the
+30 different measurements.
+
+The sample variance is 3972
+
+
+
+```{r}
+set.seed(1234)
+dyes <- read.table("dyes.dat", header = FALSE)
+
+all.one <- c(dyes$V1, dyes$V2, dyes$V3, dyes$V4, dyes$V5)
+batch <- rep(1:6, 5)
+new.dyes <- as.data.frame(cbind(all.one, batch))
+
+new.dyes$meas <- substr(new.dyes$all.one, 0, 4)
+
+new.dyes$meas <- as.numeric(new.dyes$meas)
+
+var(new.dyes$meas)
+
+sd(new.dyes$meas)
+
+sd(new.dyes$meas[new.dyes$batch == 1])
+sd(new.dyes$meas[new.dyes$batch == 2])
+sd(new.dyes$meas[new.dyes$batch == 3])
+sd(new.dyes$meas[new.dyes$batch == 4])
+sd(new.dyes$meas[new.dyes$batch == 5])
+
+new.dyes$batch <- as.numeric(new.dyes$batch)
+class(new.dyes$batch)
+
+dyes
+new.dyes
+
+
+sd(c(1595,1550,1605,1510,1560))
+
+dye.lm <- lm(meas ~ as.factor(batch), data = new.dyes)
+anova(dye.lm)
+(anova(dye.lm)["Residuals", "Mean Sq"])
+(anova(dye.lm)["as.factor(batch)", "Mean Sq"])
+
+```
+
+
+2.  Write code in Stan to get draws from the posterior distributions of the two variances: (1) the within batch variance,
+$\sigma^2_{error}$ and (2) the batch to batch variance $\sigma^2_{batch}$. You may assume the likelihood for the data is normal.  Use a normal prior with a mean of 1500 and a standard deviation of 1000 for the overall mean.  Remember that Stan by default works with standard deviations.  Use gamma(shape=2,rate=.05) as priors for both the standard deviations.  What is the posterior mean of $\sigma^2_{batch}$ (ie, the batch variance, not standard deviation).  Use a seed of 1234, iter of 10500, warmup of 500, 4 chains, a thin of 2, and an adapt_delta of 0.99 so our output will match.
+
+```{r}
+library(rstan)
+
+model <- "
+
+data { 
+  int <lower = 1> N;
+  real meas[N];
+  int q;
+  int batch[N];
+}
+
+parameters {
+  real <lower = 0> serror;
+  real <lower = 0> sbatch;
+  real <lower = 0> mu[q];
+}
+
+
+model {
+  serror ~ gamma(2, 0.05);
+  sbatch ~ gamma(2, 0.05);
+  mu ~ normal(1500, 1000);
+  for(i in 1:N){
+    meas[i] ~ normal(mu, serror);
+    meas[i] ~ normal(mu[batch[i]], sbatch);
+  }
+}
+
+generated quantities {
+  real s2error;
+  real s2batch;
+  s2error = serror*serror;
+  s2batch = sbatch*sbatch;
+}
+"
+
+
+writeLines(model, 'dyes1.stan')
+
+meas = new.dyes$meas
+N <- 30
+q <- 6
+batch <- new.dyes$batch
+fit1.dat <- list(N=N, meas = meas, q=q, batch = batch)
+fit1 <- stan(file = "dyes1.stan", data = fit1.dat, iter = 10500, seed = 1234,
+             control = list(adapt_delta = 0.99),
+            warmup = 500, chains = 4, thin = 2)
+fit1
+
+
+```
+
+
+
+
+3.  In case you couldn't get your Stan code to work, write the R code you would use to check the Raftery-Louis diagnostic for the chains of your parameters.  If you actually have chains, your code will produce the R-L diagnostic.
+
+```{r}
+library(coda)
+sims <- as.matrix(fit1)
+chains <- as.mcmc(sims)
+chains <- as.matrix(chains)
+raftery.diag(chains)
+```
+
+
+4.  Write the R code to get the effective sample sizes for the posterior chains of the parameters. If you actually have the chains, your code will produce the effective sample sizes.
+
+```{r}
+effectiveSize(chains)
+```
+
+
+5.  If you could actually produce the diagnostics, you will notice that the R-L diagnostic for $\sigma^2_{batch}$ and $\sigma_{batch}$ are higher than the R-L diagnostics for $\sigma^2_{error}$ and $\sigma_{error}$.  In fact, the batch standard deviation and variance R-L diagnostics are borderline unacceptable.  Why do you think the estimates involving the error of replication within a batch are easier to estimate than the batch to batch variability?
+
+The estimates of variation between batches are more difficult to estimate because the batch to batch variability is an estimate of the differences between groups. This creates correlation between observations because they don't have as much independence. The within batch variance is easier because it is measured on single values, not estimates of groups.
+
+
+6.  In statistics, we often are interested in something called the Intraclass correlation or ICC.  For this problem,
+the ICC would be calculated as $\sigma^2_{batch}/(\sigma^2_{batch}+\sigma^2_{error})$.  Using your chains, plot the estimated posterior density of the ICC for this problem.
+
+```{r}
+colnames(chains)
+postdens <- NA
+for(i in 1:nrow(chains)){
+  postdens[i] <- chains[i,10]/(chains[i,10]+chains[i,9])
+}
+
+plot(density(postdens))
+```
+
+
+
+The next set of problems will use a data set that shows the growth of rats.  The data file is called **rats.dat** and contains five columns, the weight of
+each animal at day 8, 15, 22, 29, and 36.  Use JAGS as the modeling software for this group of problems.
+
+7. Read in the data and plot the growth of rat1 and rat29 on the same axes.
+
+```{r}
+rats <- read.table("rats.dat", header = TRUE)
+rats$wt8. <- as.numeric(substr(rats$wt8.,0,3))
+rats$wt15. <- as.numeric(substr(rats$wt15.,0,3))
+rats$wt22. <- as.numeric(substr(rats$wt22.,0,3))
+rats$wt29. <- as.numeric(substr(rats$wt29.,0,3))
+rats$wt36. <- as.numeric(substr(rats$wt36,0,3))
+
+
+
+dim(rats)
+rat_num <- 1:30
+rats <- cbind(rats,rat_num)
+
+rats_vec <- c(rats$wt8., rats$wt15., rats$wt22., rats$wt29., rats$wt36.)
+
+rats_num <- rep(rat_num, 5)
+days <- rep(c(8,15,22,29,36), each = 30)
+rats.final <- as.data.frame(cbind(rats_vec, rats_num, days))
+
+plot(rats.final$days[rats.final$rats_num == 1], rats.final$rats_vec[rats.final$rats_num == 1], col = "green", type = 'l', lwd = 2, ylim = c(min(rats.final$rats_vec),max(rats.final$rats_vec)))
+lines(rats.final$days[rats.final$rats_num == 29],rats.final$rats_vec[rats.final$rats_num == 29], col = "blue", lwd = 2)
+
+
+```
+
+
+8.  Hopefully, you can see that the growth is fairly linear, but differs from rat to rat.  Write the JAGS code to estimate the growth as a linear regression with no regard for the different rats.  That is, ignore the fact that the data points represent 30 different animals, and treat all the data as independent.  Use priors of normal(mean=0,precision=.0001) for both $\beta_0$ and $\beta_1$.  Use a gamma(shape=2,rate=.01) as the prior for $\sigma^2_{error}$. Use the same number of iterations, burnin, thin, chains, and seed that you used in problem 2. What is DIC for this model? (Note: you may find it easier to do this problem if you rearrange the data.)
+
+DIC is 1263.8
+
+```{r}
+set.seed(1234)
+library(R2jags)
+
+mdl <- "
+
+model {
+
+  for(i in 1:150){
+    weight[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- beta0 + beta1*days[i]
+  }
+  
+  # Priors
+  
+  beta0 ~ dnorm(0, 0.0001)
+  beta1 ~ dnorm(0, 0.0001)
+  s2error ~ dgamma(2, 0.01)
+  
+}
+"
+
+writeLines(mdl, 'fit2.txt')
+
+weight = rats.final$rats_vec
+days = rats.final$days
+
+data.jags <- c('weight', 'days')
+parms <- c('beta0' , 'beta1', 's2error')
+
+fit2 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit2.txt', inits = NULL,
+                  n.iter = 10500, n.thin = 2, n.burnin = 500, jags.seed = 1234,
+                  n.chains = 4)
+(fit2)
+```
+Raftery-Lewis Diagnostics and effective sample sizes look good.
+```{r}
+sims <- as.mcmc(fit2)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+
+9.  Now please make this into a hierarchical model for the intercepts.  That is, you are considering the rats to be a random sample of all possible rats, and you are drawing the individual rat intercepts from a normal population with mean $\mu_{intercepts}$ and variance $\sigma^2_{intercepts}$. Use a normal prior for $\mu_{ntercepts}$ with mean 0 and precision .0001.  Use a gamma prior for $\sigma^2_{intercepts}$ with shape 2 and rate .01.
+Use the same prior as in problem 8 for $\beta_1$.  Use a gamma prior for $\sigma^2_{error}$ with shape 2 and rate .05.  Use the same number of iterations, burnin, thin, chains, and seed that you used in problem 8.  What is the DIC for this model?
+
+The DIC for this model is 1098.0
+
+```{r}
+set.seed(1234)
+library(R2jags)
+
+mdl <- "
+
+model {
+
+  for(i in 1:150){
+    weight[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- beta0[rat[i]] + beta1*days[i]
+  }
+  
+  for(i in 1:30){
+      beta0[i] ~ dnorm(muint, s2int)
+  }
+  
+  # Priors
+  s2int ~ dgamma(2, 0.01)
+  muint ~ dnorm(0,0.0001)
+  
+ s2error ~ dgamma(2,0.05)
+ beta1 ~ dnorm(0, 0.0001)
+
+}
+"
+
+writeLines(mdl, 'fit3.txt')
+
+weight = rats.final$rats_vec
+days = rats.final$days
+rat = rats.final$rats_num
+
+data.jags <- c('weight', 'days', 'rat')
+parms <- c('beta0' , 'beta1', 's2error', 'muint','s2int')
+
+fit3 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit3.txt', inits = NULL,
+                  n.iter = 10500, n.thin = 2, n.burnin = 500, jags.seed = 1234,
+                  n.chains = 4)
+(fit3)
+```
+
+
+10.  Now adapt what you did in problem 9 to make a hierarchical model for slopes as well as intercepts.  Use a normal prior for $\mu_{slopes}$ with mean 0 and precision .0001.  Use a gamma prior for $\sigma^2_{slopes}$ with shape 1.1 and rate 1.  Use the same control parameters as in problem 9.  What is the DIC for this model?
+
+DIC is 1066.1
+
+```{r}
+set.seed(1234)
+
+mdl4 <- "
+  model {
+  
+  for (i in 1:150){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[rat[i]] + b1[rat[i]]*days[i]
+  }
+  
+  for(i in 1:30){
+      b0[i] ~ dnorm(mub0, 1/vvint)
+      b1[i] ~ dnorm(mub1, 1/vvslp)
+  }
+  
+  vvint ~ dgamma(2, 0.01)
+  mub0 ~ dnorm(0, 0.0001)
+  
+  vvslp ~ dgamma(1.1, 1)
+  mub1 ~ dnorm(0, .00001)
+  
+  vv ~ dgamma(2, 0.05)
+  }
+
+"
+
+writeLines(mdl4, 'fit4.txt')
+
+weight = rats.final$rats_vec
+days = rats.final$days
+rat = rats.final$rats_num
+
+data.jags <- c('weight', 'days', 'rat')
+parms <- c('b0', 'b1', 'vv', 'mub0', 'vvint', 'mub1', 'vvslp')
+
+fit4 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit4.txt', inits = NULL,
+                  n.iter = 10500, n.thin = 2, n.burnin = 500, jags.seed = 1234,
+                  n.chains = 4)
+fit4
+```
+
+
+11.  Which of the models in 8, 9, and 10 would you prefer?  Why?
+
+I prefer the complete hierarchical model from question 10. It has the best DIC and is the best for inference.
+
+12.  Regardless of your answer in number 11, rerun the model in problem 10.  Make sure that all parameters are being saved.  Compute the Raftery-Louis diagnostic for all the parameters.  Are there any R-L diagnostics that we should be concerned about?
+
+All of the R-L values are below 3, some are close but aren't too concerning.
+Effective size is also good.
+
+```{r}
+set.seed(1234)
+
+mdl4 <- "
+  model {
+  
+  for (i in 1:150){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[rat[i]] + b1[rat[i]]*days[i]
+  }
+  
+  for(i in 1:30){
+      b0[i] ~ dnorm(mub0, 1/vvint)
+      b1[i] ~ dnorm(mub1, 1/vvslp)
+  }
+  
+  vvint ~ dgamma(2, 0.05)
+  mub0 ~ dnorm(0, 0.0001)
+  
+  vvslp ~ dgamma(1.1, 1)
+  mub1 ~ dnorm(0, .00001)
+  
+  vv ~ dgamma(1.1, 0.5)
+  }
+
+"
+
+writeLines(mdl4, 'fit4.txt')
+
+weight = rats.final$rats_vec
+days = rats.final$days
+rat = rats.final$rats_num
+
+data.jags <- c('weight', 'days', 'rat')
+parms <- c('b0', 'b1', 'vv', 'mub0', 'vvint', 'mub1', 'vvslp')
+
+fit4 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit4.txt', inits = NULL,
+                  n.iter = 10500, n.thin = 2, n.burnin = 500, jags.seed = 1234,
+                  n.chains = 4)
+(fit4)
+sims <- as.mcmc(fit4)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+For the next set of problems, you will be using the data set **dugong.dat**.  These data concern growth of dugongs (sometimes called sea cows, an aquatic mammal found primarily in the Indo-West Pacific).  The
+data file contains two columns, the age of the animal in years, and the length of the animal in meters for 
+27 individuals.  Use JAGS for the models in this section.
+
+13.  Read in the data and plot it with age on the x-axis and length on the y-axis.
+
+```{r}
+dugong <- read.table("dugong.dat")
+head(dugong)
+
+plot(dugong$age, dugong$length)
+```
+
+
+14.  You will note that growth is faster for younger animals, and slows as the animal matures.  This type of growth is called nonlinear growth, and the simplest curve to describe such growth is:
+\begin{equation}
+   $y_i = a - bg^{x_i}$,
+\end{equation}
+where $y_i$ represents the length of the animal and $x_i$ represents the age of the animal.  As you can see, there are three parameters to
+estimate, $a, b,$ and $g$.  'a' represents the asymptote or value at which growth stops, 'b' is constrained to be positive, and 'g' is constrained 
+to be between 0 and 1.  Use a normal with mean 3 and precision .01 as the prior for parameter $a$.  Use a gamma with shape 1.1 and rate .1 for parameter $b$.  And use a Uniform(0,1) prior for parameter $g$.  You may assume the likelihood is normal.  Use a gamma with shape 2 and rate .1 for the prior for $\sigma^2_{error}$.  Use the same control parameters as we have used in previous problems. What is the DIC of the model?
+Use the same number of iterations in problem 8 and 2
+
+-38.4
+
+
+```{r}
+set.seed(1234)
+mdl5 <- "
+  model {
+  
+  for (i in 1:27){
+    length[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- (a - b*g^(age[i]))
+  }
+  
+  g ~ dunif(0,1)
+  b ~ dgamma(1.1, .1)
+  a ~ dnorm(3, 0.01)
+  vv ~ dgamma(2, 0.1)
+  
+  }
+
+"
+writeLines(mdl5, "fit5.txt")
+length <- dugong$length
+age <- dugong$age
+
+data.jags <- c('length', 'age')
+parms <- c('a', 'g', 'b', 'vv')
+
+fit5 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit5.txt', inits = NULL,
+                  n.iter = 10500, n.thin = 2, n.burnin = 500, jags.seed = 1234,
+                  n.chains = 4)
+
+fit5
+```
+
+
+```{r}
+sims <- as.mcmc(fit5)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+15.  What is the Raftery-Louis diagnostic for the asymptote parameter?
+
+R-L for aymptote parameter is 10.00. 
+
+16.  Do you think you have a problem?  Why?
+
+This is defnitiely a problem. This indicates that it's not mixing well and is correlated. We will need to run more draws.
+
+17.  Rerun the code from problem 14 with 10 times the number of iterations and burnins, and thin by 10.  Now what is the R-L diagnostic for $a$?
+
+Now the R-L diagnostic is 2.29, this is acceptable.
+```{r}
+set.seed(1234)
+mdl5 <- "
+  model {
+  
+  for (i in 1:27){
+    length[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- (a - b*g^(age[i]))
+  }
+  
+  g ~ dunif(0,1)
+  b ~ dgamma(1.1, .1)
+  a ~ dnorm(3, 0.01)
+  vv ~ dgamma(2, 0.1)
+  
+  }
+
+"
+writeLines(mdl5, "fit5.txt")
+length <- dugong$length
+age <- dugong$age
+
+data.jags <- c('length', 'age')
+parms <- c('a', 'g', 'b', 'vv')
+
+fit5 <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'fit5.txt', inits = NULL,
+                  n.iter = 10*10500, n.thin = 10, n.burnin = 10*500, jags.seed = 1234,
+                  n.chains = 4)
+
+fit5
+```
+
+
+```{r}
+sims <- as.mcmc(fit5)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+```
+
+
+
+18.  What is the 95% equal tail posterior probability interval for the asymptote parameter?
+
+The 95% equal tail posterior probability interval for the asymptote parameter is (2.52, 2.83).
+
+```{r}
+library(bayestestR)
+et95 <- ci(chains[,1], method = "ETI", ci = .95)
+et95
+```
+
+
+19.  There is a small posterior probability that the asymptote parameter could be greater than 3.  What is that probability?
+
+The probability that the asymptote parameter is greater than 3 is 0.00185
+
+```{r}
+colnames(chains)
+mean(chains[,1] > 3)
+```
+
+
+20.  Using the output from the code in problem 17, put a best fit line on your plot of the raw data.  Use the posterior means of the parameters for the line.
+
+```{r}
+colnames(chains)
+a <- chains[,1]
+b <- chains[,2]
+g <- chains[,4]
+
+
+x.seq <- seq(from = 1, to = 31.5, by = .1)
+estimates <- mean(a) - mean(b) * mean(g)^(x.seq)
+
+plot(x.seq, estimates)
+
+plot(dugong$age, dugong$length)
+lines(x.seq, estimates)
+```
+
+
+21.  Now plot the data points, the best fit line, and 95% posterior probability intervals for the line.
+
+```{r}
+
+quant_a <- quantile(a, probs = c(.025,.975))
+quant_b <- quantile(b, probs = c(.025,.975))
+quant_g <- quantile(g, probs = c(.025,.975))
+
+estimate_2.5 <-  quant_a[2] - quant_b[1]*quant_g[1]^(x.seq)
+estimate_97.5 <-  quant_a[1] - quant_b[2]*quant_g[2]^(x.seq)
+
+
+plot(dugong$age, dugong$length, ylim = c(1.5,3), main = "Line of best fit with 95% posterior probability intervals")
+lines(x.seq, estimates, lwd = 2)
+lines(x.seq, estimate_2.5, col = "red")
+lines(x.seq, estimate_97.5, col = "red")
+
+
+
+```
+
+
+The next data set concerns survival of mice under different treatment conditions. The data file is called **mice.dat** and contains four columns: a mouse id, the treatment (there are four), the number of days the
+mouse survived, and a censored survival time (that is, the time the mouse survived was not recorded exactly,
+but the experimenters know the mouse survived at least as long as the time in this column).  When you are asked to produce posterior distributions in this section, you should use SAS.
+
+22.  Produce a boxplot of the survival time by the treatment conditions.  Take out all the censored data prior to making the plot.
+
+```{r}
+library(ggplot2)
+mice <- read.table("mice.dat", header = TRUE)
+head(mice)
+
+mice$tmt <- as.factor(mice$tmt)
+
+
+mice.plot <- mice[mice$censored == 0,]
+ggplot(mice.plot, mapping = aes(x = as.factor(tmt), y = time)) + 
+  geom_boxplot()
+```
+
+
+23.  Produce another boxplot, this time putting the censored time in place of 0 in the time variable.
+
+```{r}
+ggplot(mice, mapping = aes(x = tmt, y = time+censored)) + 
+  geom_boxplot()
+```
+
+
+24.  We expect survival times to be exponential or gamma, but for these data, we don't, in general, see very long tails.  So for this problem, we are going to assume the survival time (likelihood) is normally distributed, with different means, and different variances in each treatment.  Assume the prior distributions on the treatment means are all normal with mean 25 and variance 1000.  Assume the prior distributions on the treatment variances are gamma with shape 4 and scale 10.  Use SAS.  Use the following control parameters: nmc=400000 nbi=5000 thin=10 seed=1234. Also use propcov=quanew. What is the mean of the survival time of treatment 2.
+
+Mean survival time of treatment 2 is 27.78.
+
+Sas Code:
+
+data mice;
+infile 'C:/Users/nateh/Documents/Stat 451/mice.dat' firstobs = 2;
+input mid tmt time censored;
+run;
+
+proc mcmc data = mice outpost = 'C:/Users/nateh/Documents/Stat 451/mice.sas7bdat' seed = 1234
+ nmc = 400000 nbi = 5000 thin = 10 monitor = (_parms_) 
+ diagnostics = (rl ess autocorr) dic propcov = quanew;
+array mu[4] mu1-mu4;
+array vv[4] vv1-vv4;
+parms mu:;
+parms vv:;
+prior mu: ~ normal(mean= 25, sd = 1000);
+prior vv: ~ gamma(shape = 4, scale = 10);
+theta = mu[tmt];
+alpha = vv[tmt];
+if censored = 0 then ll = logpdf('normal', time, theta, alpha);
+else ll = logsdf('normal', time, theta, alpha);
+model general(ll);
+run;
+
+25.  What is the probability that the survival time in treatment 2 exceeds the survival time in treatment 1?
+
+The probability that the survival time for treatment 2 exceeds the survival time for treatment 1 is 0.947.
+
+```{r}
+library(sas7bdat)
+chains <- read.sas7bdat('C:/Users/nateh/Documents/Stat 451/mice.sas7bdat')
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+
+tmt1 <- chains[,2]
+tmt2 <- chains[,3]
+mean(tmt1<tmt2)
+
+plot(density(tmt2-tmt1), main = "Density plot of tmt2 - tmt1")
+```
+
+

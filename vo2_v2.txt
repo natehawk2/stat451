@@ -1,0 +1,21 @@
+
+  model {
+  
+  for(i in 1:120){
+    y[i] ~ dnorm(mu[i], prec)
+    mu[i] <- b0 +  bgen*gender[i] + bbmi*bmi[i] + brpe*rpe[i]+ bhr*hr[i] + bmph*mph[i]
+  }
+  
+  b0 ~ dnorm(0 , 0.001)
+  bgen ~ dnorm(0, 0.001)
+  bbmi ~ dnorm(0, 0.001)
+  brpe ~ dnorm(0, 0.001)
+  bhr ~ dnorm(0, 0.001)
+  bmph ~ dnorm(0, 0.001)
+  
+  prec <- 1/vv
+  vv ~ dgamma(1.5, 0.2)
+  
+  }
+
+

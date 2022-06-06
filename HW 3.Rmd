@@ -1,0 +1,376 @@
+---
+title: "HW 3"
+author: "Nathan Hawkins"
+date: "2/5/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+twogroups <- read.table("C:/Users/nateh/Downloads/twogroups.dat")
+
+names(twogroups) <- c("tmt", "y")
+head(twogroups)
+table(twogroups$tmt)
+```
+
+# 1 Jags Model
+
+```{r}
+library(R2jags)
+hw3mdl <- "
+  model {
+  
+    for(i in 1:33){
+      y[i] ~ dnorm(mu[tmt[i]], 1/s2[tmt[i]])
+    }
+   
+    #Priors
+    for(i in 1:2){
+      mu[i] ~ dnorm(125, .01)
+      s2[i] ~ dunif(0, 2000)
+    }
+    
+   
+  }
+"
+
+writeLines(hw3mdl, 'hw3.txt')
+y <- twogroups$y
+tmt <- twogroups$tmt
+data.jags <- c('y','tmt')
+parms <- c("mu", "s2")
+
+hw3.sim <- jags(data = data.jags, inits = NULL,
+               parameters.to.save = parms,
+               model.file = 'hw3.txt',
+               n.iter = 16000,
+               n.burnin = 1000,
+               n.chains = 4,
+               n.thin = 3)
+
+hw3.sim
+
+
+```
+
+# Convergence checks
+The plots look like they converge. Dependence is close to 1. Effective size is plenty high, and there's low autocorrelation.
+```{r}
+sims <- as.mcmc(hw3.sim)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+head(sims)
+
+plot(sims, type = 'l')
+
+mu1 <- sims[,2]
+mu2 <- sims[,3]
+s2_1 <- sims[,4]
+s2_2 <- sims[,5]
+
+effectiveSize(sims)
+autocorr.diag(sims)
+raftery.diag(sims)
+```
+
+
+# Next Model
+```{r}
+library(R2jags)
+a2mdl <- "
+  model {
+  
+    for(i in 1:33){
+      y[i] ~ dnorm(mu[tmt[i]], 1/s2[tmt[i]])
+    }
+   
+    #Priors
+    for(i in 1:2){
+      mu[i] ~ dnorm(125, .01)
+    }
+    
+    s2[1] ~ dgamma(2, .002)
+    s2[2] ~ dgamma(2, .04)
+    
+   
+  }
+"
+
+writeLines(a2mdl, 'a1.txt')
+y <- twogroups$y
+tmt <- twogroups$tmt
+data.jags <- c('y','tmt')
+parms <- c("mu", "s2")
+
+a1.sim <- jags(data = data.jags, inits = NULL,
+               parameters.to.save = parms,
+               model.file = 'a1.txt',
+               n.iter = 16000,
+               n.burnin = 1000,
+               n.chains = 4,
+               n.thin = 3)
+
+a1.sim
+
+```
+# Convergence checks
+
+The plots look like they converge. Dependence is close to 1. Effective size is plenty high, and there's low autocorrelation.
+```{r}
+a1_sims <- as.mcmc(a1.sim)
+a1_chains <- as.matrix(a1_sims)
+a1_sims <- as.mcmc(a1_chains)
+head(a1_sims)
+
+plot(sims, type = 'l')
+
+a1_mu1 <- a1_sims[,2]
+a1_mu2 <- a1_sims[,3]
+a1_s2_1 <- a1_sims[,4]
+a1_s2_2 <- a1_sims[,5]
+
+#Effective Size
+effectiveSize(a1_sims)
+#Autocorrelation
+autocorr.diag(a1_sims)
+#Diagnositcs
+raftery.diag(a1_sims)
+```
+
+
+
+# Comparing Models
+DIC is lower for the model with the gamma variances.
+Here are density plots of the differences
+
+```{r}
+diff1 <- mu1-mu2
+diff2 <- a1_mu1 - a1_mu2
+plot(density(diff1), col = 'blue', lwd = 4, main = "Comparison of the distribution of the difference of mu's")
+lines(density(diff2), col = 'orchid', lwd = 4)
+legend(-10, .03, c("Uniform Prior variance", "Gamma Prior Varaince"), col = c("blue", "orchid"), lty = 1, lwd = 4)
+
+```
+# 2 Same thing but in sas
+Sas Code 
+
+
+
+ library(SASmarkdown)
+
+saspath <- "C:/Program Files/SASHome/SASFoundation/9.4/sas.exe"
+sasopts <- "-nosplash -ls 75"
+knitr::opts_chunk$set(engine="sas", engine.path=saspath,
+        engine.opts=sasopts, comment=NA)
+
+knitr::opts_chunk$get()$engine
+knitr::opts_chunk$get()$engine.path
+knitr::opts_chunk$get()$engine.opts
+
+
+# Sas Code. Works in R just not when I knit it.
+
+
+ data twogroups;
+ infile 'C:/Users/nateh/Downloads/twogroups.dat';
+ input tmt y;
+ run;
+
+ proc means data=twogroups;
+ run;
+
+
+
+proc mcmc data = twogroups nbi = 30000 nmc = 300000 thin = 30 outpost = 'C:/Users/nateh/Documents/Stat 451/anovamodel_1.sas7bdat' dic propcov=quanew            monitor=(_parms_) stats = all diagnostics = all;
+array mu[2] mu1-mu2;
+array vv[2] vv1-vv2;
+parms mu1: 0;
+parms mu2: 0;
+parms vv1: 10;
+parms vv2: 10;
+prior mu1: ~ normal(125, var = 100);
+prior mu2: ~ normal(125, var = 100);
+prior vv1: ~ uniform(0, 2000);
+prior vv2: ~ uniform(0, 2000);
+model y ~ normal(mu[tmt], var = vv[tmt]);
+run;
+
+data twogroups;
+infile 'C:/Users/nateh/Downloads/twogroups.dat';
+input tmt y;
+run;
+
+proc means data=twogroups;
+run;
+
+ proc mcmc data = twogroups nbi = 30000 nmc = 300000 thin = 30 outpost = 'C:/Users/nateh/Documents/Stat 451/anovamodel_2.sas7bdat' dic propcov=quanew            monitor=(_parms_) stats = all diagnostics = all;
+array mu[2] mu1-mu2;
+array vv[2] vv1-vv2;
+parms mu1: 0;
+parms mu2: 0;
+parms vv1: 10;
+parms vv2: 10;
+prior mu1: ~ normal(125, var = 100);
+prior mu2: ~ normal(125, var = 100);
+prior vv1: ~ gamma(2, scale = 500);
+prior vv2: ~ gamma(2, scale = 25);
+model y ~ normal(mu[tmt], var = vv[tmt]);
+run;
+endsas;
+
+
+
+
+
+#Check Convergence for sas model
+```{r echo = FALSE}
+
+library(haven)
+library(coda)
+
+anovamodel1 <- read_sas("C:/Users/nateh/Documents/Stat 451/anovamodel_1.sas7bdat")
+anovamodel2 <- read_sas("C:/Users/nateh/Documents/Stat 451/anovamodel_2.sas7bdat")
+
+
+plot(anovamodel1$mu1, type = 'l')
+plot(anovamodel1$mu2, type = 'l')
+plot(anovamodel1$vv1, type = 'l')
+plot(anovamodel1$vv2, type = 'l')
+
+an_1.sims <- as.mcmc(anovamodel1)
+an_1.sims.chains <- as.matrix(an_1.sims)
+an_1.sims <- as.mcmc(an_1.sims.chains)
+head(an_1.sims)
+
+#Effective Size
+effectiveSize(an_1.sims)
+#Autocorrelation
+autocorr.diag(an_1.sims)
+#Diagnositcs
+raftery.diag(an_1.sims)
+
+an_2.sims <- as.mcmc(anovamodel2)
+an_2.sims.chains <- as.matrix(an_2.sims)
+an_2.sims <- as.mcmc(an_2.sims.chains)
+head(an_2.sims)
+
+effectiveSize(an_2.sims)
+autocorr.diag(an_2.sims)
+raftery.diag(an_2.sims)
+
+```
+
+```{r}
+plot(density(anovamodel2$mu1 - anovamodel2$mu2), col = 'blue', lwd = 2, main = "Mu1-Mu2 for both models compared")
+lines(density(anovamodel1$mu1 - anovamodel2$mu2), col = 'red', lwd = 2)
+legend(-10, .03, c("Prior Variance follows gamma", "Prior Variance follows uniform"), col = c('blue', 'red'), lty = 1,lwd = 2)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 3 Prior Predictive for uniform
+Prior Predictive Distributions
+```{r}
+# Generate prior distribution
+prpred_1 <- NULL
+for(i in 1:1000){
+  prpred_1[i] <- rnorm(1, 125, sqrt(100)) + rnorm(1,0,sqrt(runif(1,0,2000)))
+}
+#Plot Prior
+plot(density(prpred_1), type = 'l', main = "Prior Distribution")
+
+#Plot Prior with treatments
+hist(twogroups[twogroups$tmt == 1,]$y, freq =  FALSE, main = "Treatment 1 histogram with prior distribution", xlim = c(30, 250), ylim = c(0, 0.06))
+lines(density(prpred_1), type = 'l', col = 'blue', lwd = 2)
+hist(twogroups[twogroups$tmt == 2,]$y, freq =  FALSE, main = "Treatment 2 histogram with prior distribution", xlim = c(30, 250))
+lines(density(prpred_1), type = 'l', col = 'blue', lwd = 2)
+```
+
+
+# 4 Prior Predictive for gamma model
+Prior Predictive Distributions
+```{r}
+# Generate prior distribution
+prpred_2 <- NULL
+for(i in 1:1000){
+  prpred_2[i] <- rnorm(1, 125, sqrt(100)) + rnorm(1,0,sqrt(rgamma(1, 2, 0.002)))
+}
+
+prpred_3 <- NULL
+for(i in 1:1000){
+  prpred_3[i] <- rnorm(1, 125, sqrt(100)) + rnorm(1,0,sqrt(rgamma(1, 2, 0.04)))
+}
+
+
+#Plot Prior
+plot(density(prpred_2), type = 'l', main = "Prior Distribution")
+plot(density(prpred_3), type = 'l', main = "Prior Distribution")
+
+#Plot Prior with treatments
+hist(twogroups[twogroups$tmt == 1,]$y, freq =  FALSE, main = "Treatment 1 histogram with gamma prior distribution", xlim = c(30, 250), ylim = c(0, 0.06))
+lines(density(prpred_2), type = 'l', col = 'blue', lwd = 2)
+hist(twogroups[twogroups$tmt == 2,]$y, freq =  FALSE, main = "Treatment 2 histogram with gamma prior distribution", xlim = c(90, 150))
+lines(density(prpred_3), type = 'l', col = 'blue', lwd = 2)
+```
+
+# 5 Posterior Predictive from Jags model
+Posterior Predictive Distributions
+```{r}
+#Posterior Predictive
+popdat1 <- NULL
+for(i in 1:20000){
+            #Noise in mean, #Noise in Error
+  popdat1[i] <- mu1[i] + rnorm(1,0,sqrt(s2_1[i]))
+}
+
+hist(twogroups$y[tmt == 1], breaks = 5, freq = FALSE, xlim = c(70, 200), main = "Histogram of Treatment 1 with Posterior Predictive line", ylim = c(0, 0.06))
+lines(density(popdat1))
+hist(twogroups$y[tmt == 2], breaks = 5, freq = FALSE, xlim = c(70, 200), main = "Histogram of Treatment 2 with Posterior Predictive line")
+lines(density(popdat1))
+
+```
+
+# 6 Posterior Predictive for SAS model
+Posterior Predictive Distributions for the 2nd model. These posterior predictive lines closely follow the histogram
+```{r}
+#Posterior Predictive
+sas_mu1 <- an_2.sims[,2]
+sas_mu2 <- an_2.sims[,3]
+sas_vv1 <- an_2.sims[,4]
+sas_vv2 <- an_2.sims[,5]
+
+popdat2_sas <- NULL
+
+for(i in 1:10000){
+            #Noise in mean, #Noise in Error
+  popdat2_sas[i] <- sas_mu1[i] + rnorm(1,0,sqrt(sas_vv1[i]))
+}
+
+popdat3_sas <- NULL
+
+for(i in 1:10000){
+  popdat3_sas[i] <- sas_mu2[i] + rnorm(1,0,sqrt(sas_vv2[i]))
+}
+
+hist(twogroups$y[tmt == 1], breaks = 5, freq = FALSE, xlim = c(70, 200), main = "Histogram of Treatment 1 with Posterior Predictive line", ylim = c(0, 0.06))
+lines(density(popdat2_sas))
+hist(twogroups$y[tmt == 2], breaks = 5, freq = FALSE, xlim = c(70, 200), main = "Histogram of Treatment 2 with Posterior Predictive line")
+lines(density(popdat3_sas))
+```
+
+
+

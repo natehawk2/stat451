@@ -1,0 +1,192 @@
+---
+title: "HW 8"
+author: "Stat 451"
+date: "3/22/2021"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+For this assignment you will use the data file 'outside.dat'.  In this file there
+are two columns, time and response.  The response is a binary variable indicating
+whether or not a set in volleyball resulted in a kill.  The time is the elapsed
+time in seconds the ball was in the air after leaving the setter's hands until 
+being struck by the outside hitter.  The question is whether there is a 
+relationship between set speed (i.e. time the ball was in the air) and probability
+of the set resulting in a kill.  The problem should be done as a linear logistic
+regression.
+
+Likelihood will be bernouli
+```{r}
+outside <- read.table("outside.dat", header = TRUE)
+dim(outside)
+head(outside)
+library(R2jags)
+library(ggplot2)
+
+ggplot(data = outside, mapping = aes(x= time, y = as.factor(response))) + 
+  geom_boxplot()
+```
+
+
+1.  Write the code to analyze the data in JAGS.
+
+```{r}
+
+mdl <- "
+  model {
+    
+    for(i in 1:718){
+      response[i] ~ dbern(p[i])
+      logit(p[i]) <- b0 + b1*time[i]
+    }
+     # Prior Values
+      b1 ~ dnorm(0, 0.001)
+      b0 ~ dnorm(0, 0.001)
+  }
+"
+
+# Reponse is binomial
+# The effects are on the logit scale
+
+writeLines(mdl, 'logistic.txt')
+response <- outside$response
+time <- outside$time
+
+data.jags <- c('time', "response")
+parms <- c('b0','b1')
+logistic.sim <- jags(data = data.jags, inits = NULL, parameters.to.save = parms,
+                     model.file = 'logistic.txt', n.iter = 12000, n.burnin = 2000,
+                     n.chains = 8, n.thin = 10)
+
+logistic.sim
+
+```
+
+
+
+
+
+2. Show conversion diagnostics.  At the very least the Raftery-Lewis and the
+effective sample size.
+
+Diagnostics are good.
+```{r}
+sims <- as.mcmc(logistic.sim)
+chains <- as.matrix(sims)
+raftery.diag(chains)
+effectiveSize(chains)
+```
+
+
+3. Is there a significant relationship between time and the probability of 
+a kill?  How do you know?  What are the $\hat\beta$'s?
+
+Since the 95% posterior credible interval does not span 0 then there is a significant effect.
+Yes there is a significant relationship between time and probability of a kill. A density plot of the changes in probability associated with a 1 second time change does not contain 0. So I conclude that it is significant.
+```{r}
+exp(-1.665)/(1+exp(-1.665))
+exp.b1s <- exp(chains[,2])/(1+exp(chains[,2]))
+
+plot(density(exp.b1s))
+colnames(chains)
+
+plot(density(chains[,2]))
+```
+
+
+4.  Produce a plot with probability of a kill on the y-axis and time
+on the x-axis.  Show the best fit line.
+
+```{r}
+min(outside$time)
+max(outside$time)
+
+plot(outside$time, outside$time*-0.159)
+
+p1 <- exp(chains[,1] + chains[,2])/(exp(1+chains[,1]+chains[,2]))
+p1 <- chains[,1] + chains[,2]
+prob1 <- exp(p1)/(1+exp(p1))
+quantile(p1,c(0.25,0.975))
+
+length(prob1)
+tt <- seq(0.025, 2.1, by = .1)
+length(tt)
+probs <- matrix(0,8000,21)
+for(i in 1:21){
+  probs[,i] <- exp(chains[,1]+chains[,2]* tt[i])/(1+exp(chains[,1]+chains[,2]*tt[i]))
+}
+
+length(tt)
+plot(tt, apply(probs,2,mean), type = 'l')
+
+```
+
+
+5.  Add the 95\% posterior probability intervals to the plot in the
+previous problem.
+
+```{r}
+exp.b1s <- exp(chains[,2])/(1+exp(chains[,2]))
+min(outside$time)
+max(outside$time)
+
+plot(outside$time, outside$time*-0.159)
+
+p1 <- exp(chains[,1] + chains[,2])/(exp(1+chains[,1]+chains[,2]))
+p1 <- chains[,1] + chains[,2]
+prob1 <- exp(p1)/(1+exp(p1))
+quantile(p1,c(0.25,0.975))
+
+length(prob1)
+tt <- seq(0.025, 2.1, by = .1)
+length(tt)
+probs <- matrix(0,8000,21)
+for(i in 1:21){
+  probs[,i] <- exp(chains[,1]+chains[,2]* tt[i])/(1+exp(chains[,1]+chains[,2]*tt[i]))
+}
+
+length(tt)
+plot(tt, apply(probs,2,mean), type = 'l')
+lines(tt,apply(probs,2,quantile,0.025), col = "blue")
+lines(tt,apply(probs,2,quantile,0.975), col = "blue")
+```
+
+
+6.  Now write the code to analyze the problem in Stan.  Compare
+the $\beta$'s you got in JAGS to the $\beta$'s you got in Stan.
+Provide plots of the posteriors for the $\beta_0$'s on one
+set of axes.  Provide plots of the posteriors for the $\beta_1$'s on one
+set of axes.
+
+The effects for intercept and slope are almost the same as the model in jags. 
+
+```{r}
+head(outside)
+dim(outside)
+
+N <- nrow(outside)
+x <- outside$time
+y <- outside$response
+out_dat <- list(N=N, y = y, x = x)
+library(rstan)
+logistic_stan.sim <- stan(file = "outside.stan", data = out_dat, iter = 5000, 
+              warmup = 1000, chains = 1, thin = 2)
+
+logistic_stan.sim
+```
+
+Density Plots
+
+```{r}
+sims2 <- as.matrix(logistic_stan.sim)
+chains2 <- as.mcmc(sims2)
+
+
+plot(density(chains[,2]), main = "Density plot of B1 posterior draws", lwd = 2)
+lines(density(chains2[,2]), col = "blue", lwd = 2)
+
+plot(density(chains[,1]), main = "Density plot of B0 posterior draws", lwd = 2)
+lines(density(chains2[,1]), col = "blue", lwd = 2)
+```
+

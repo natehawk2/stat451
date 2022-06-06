@@ -1,0 +1,19 @@
+
+model {
+
+  for(i in 1:24){
+    y[i] ~ dnorm(mu[tmt[i]],1/s2)
+  }
+  
+  for(i in 1:8){
+    mu[i] ~ dnorm(5, 0.0001)
+  }
+  
+  first4 = sum(mu[1] + mu[2] + mu[3] + mu[4])/4
+  last4 = sum(mu[5] + mu[6] + mu[7] + mu[8])/4
+  diff = last4-first4
+  s2 ~ dgamma(1.5, .5)
+  
+
+}
+

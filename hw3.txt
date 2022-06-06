@@ -1,0 +1,16 @@
+
+  model {
+  
+    for(i in 1:33){
+      y[i] ~ dnorm(mu[tmt[i]], 1/s2[tmt[i]])
+    }
+   
+    #Priors
+    for(i in 1:2){
+      mu[i] ~ dnorm(125, .01)
+      s2[i] ~ dunif(0, 2000)
+    }
+    
+   
+  }
+

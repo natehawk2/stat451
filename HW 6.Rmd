@@ -1,0 +1,96 @@
+---
+title: "HW 6"
+author: "Nathan Hawkins"
+date: "3/2/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r}
+library(brms)
+crack <- read.table("C:/Users/nateh/Downloads/cracker.dat", header = TRUE)
+```
+
+
+# 1. Run 3 slope model in using brm
+```{r}
+crack$tmtf <- as.factor(crack$tmt)
+fit1 <- brm(formula = sales ~ -1 + tmtf + tmtf:presales, data = crack, family = "gaussian", prior = c(set_prior("normal(0,100", class = "b")),
+            warmup = 1000, iter = 3000, chains = 4, 
+            control = list(adapt_delta = .98))
+
+summary(fit1)
+
+
+library(shinystan)
+#launch_shinystan(fit1)
+library(coda)
+sims <- as.mcmc(fit1)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+```
+
+# 2. Look for differences in slopes
+
+It doesn't appear that there is a significant difference in any of the slopes.
+```{r}
+sims <- as.mcmc(fit1)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+colnames(chains)
+
+
+
+slope1 = chains[,4]
+slope2 = chains[,5]
+slope3 = chains[,6]
+
+
+# Plots look like the slopes are different
+plot(crack$presales[crack$tmt == 1], crack$sales[crack$tmt ==1], col = 1, xlim = c(0,30), ylim = c(0,50), lwd = 3)
+points(crack$presales[crack$tmt == 2], crack$sales[crack$tmt ==2], col = 2, lwd = 3)
+points(crack$presales[crack$tmt == 3], crack$sales[crack$tmt ==3], col = 3, lwd = 3)
+abline(a = 12.71, b = 1.10, col = 1)
+abline(a = 9,56, b = 1.01, col = 2)
+abline(a = 7.51, b = 0.79, col = 3)
+
+
+# There doesn't seem to be a significant difference in the slopes
+quantile(slope1- slope2, probs = c(.025, .975))
+quantile(slope1- slope3, probs = c(.025, .975))
+quantile(slope2- slope3, probs = c(.025, .975))
+
+```
+
+
+
+
+# 3 Three intercepts and one slope
+```{r}
+fit2 <- brm(formula = sales ~ -1 + tmtf + presales, data = crack, family = "gaussian", prior = c(set_prior("normal(0,100", class = "b")),
+            warmup = 1000, iter = 3000, chains = 4, 
+            control = list(adapt_delta = .98))
+
+summary(fit2)
+
+sims2 <- as.mcmc(fit2)
+chains2 <- as.matrix(sims2)
+sims2 <- as.mcmc(chains2)
+```
+
+
+
+Loo 1 is a better fit. It has more "good" predictions than loo 2. 3 slopes is the better model.
+
+```{r}
+library(loo)
+loo1 = loo(fit1, save_psis = TRUE, moment_match = TRUE)
+loo2 = loo(fit2, save_psis = TRUE, moment_match = TRUE)
+
+loo1
+loo2
+```
+
+

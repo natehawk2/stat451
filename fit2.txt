@@ -1,0 +1,17 @@
+
+
+model {
+
+  for(i in 1:150){
+    weight[i] ~ dnorm(mu[i], 1/s2error)
+    mu[i] <- beta0 + beta1*days[i]
+  }
+  
+  # Priors
+  
+  beta0 ~ dnorm(0, 0.0001)
+  beta1 ~ dnorm(0, 0.0001)
+  s2error ~ dgamma(2, 0.01)
+  
+}
+

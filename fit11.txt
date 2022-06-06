@@ -1,0 +1,27 @@
+
+  model {
+  
+  for (i in 1:360){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[trt[i]] + b1[trt[i]]*day[i] + b2[trt[i]]*day2[i] + u0[newpig[i]] + u1[newpig[i]]*day[i] + u2[newpig[i]]*day2[i]
+  }
+  
+  for(i in 1:3){
+    b0[i] ~ dnorm(0, 0.0001)
+    b1[i] ~ dnorm(0, 0.0001)
+    b2[i] ~ dnorm(0, 0.0001)
+  }
+  
+  for(i in 1:60){
+    u0[i] ~ dnorm(0,1/vvint)
+    u1[i] ~ dnorm(0, 1/vvslp)
+    u2[i] ~ dnorm(0, 1/vvslp2)
+  }
+  
+  vvslp2 ~ dgamma(1.1, 0.1)
+  vvslp ~ dgamma(1.1, 0.1)
+  vvint ~ dgamma(1.1, 0.1)
+  vv ~ dgamma(1.1, 0.1)
+}
+
+

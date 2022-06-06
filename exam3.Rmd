@@ -1,0 +1,106 @@
+---
+title: "Exam 3"
+author: "Stat 451"
+date: "4/6/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a take-home exam.  The exam is due on Tuesday, April 13, at 9:30 am.  Please complete the exam
+using a Markdown file.  Please change the **author** field in the .Rmd file from "Stat 451" to your name.
+Please email your 
+completed exam to gwf@byu.edu and to dteuscher.37.12@gmail.com prior to the 9:30 am deadline.  Please email both your Mardkown file (.Rmd) and
+your output file.  You may use whatever format is most convenient for your output document.  
+
+Use the following convention to name your files (assuming you chose .html as your output format):
+'lastname_exam3.Rmd' and 'lastname_exam3.html'
+where lastname is replaced with your last name.  Make sure you show your code as well as your answers.
+
+Take-home exams should
+be your own work.  However, you are welcome to use class notes, class videos, and help documentation publicly 
+available for all the programs we have used.  You should not search the web for similar problems
+which someone else may have solved.  You should not discuss the exam with any living person.  
+The data for the exam are in data files that I will email to you.
+
+You will be given pretty explicit directions on number of iterations, burnin, seed, etc. so my answers will match yours.  Please follow
+those directions carefully.
+
+For the first set of problems we will be using the data file **dyes.dat**.  These data concern variation in batches of material being dyed.  The file contains rows and five columns.  Each row is a different batch with five repeated 
+measurements taken on that batch.  Thus, there are six batches, with five measurements taken on each batch.  You may
+reorder the data in the file if you find it useful.
+
+1.  What is the sample variance for all the data in the data file.  That is, what is the overall sample variance for the
+30 different measurements.
+
+2.  Write code in Stan to get draws from the posterior distributions of the two variances: (1) the within batch variance,
+$\sigma^2_{error}$ and (2) the batch to batch variance $\sigma^2_{batch}$. You may assume the likelihood for the data is normal.  Use a normal prior with a mean of 1500 and a standard deviation of 1000 for the overall mean.  Remember that Stan by default works with standard deviations.  Use gamma(shape=2,rate=.05) as priors for both the standard deviations.  What is the posterior mean of $\sigma^2_{batch}$ (ie, the batch variance, not standard deviation).  Use a seed of 1234, iter of 10500, warmup of 500, 4 chains, a thin of 2, and an adapt_delta of 0.99 so our output will match.
+
+3.  In case you couldn't get your Stan code to work, write the R code you would use to check the Raftery-Louis diagnostic for the chains of your parameters.  If you actually have chains, your code will produce the R-L diagnostic.
+
+4.  Write the R code to get the effective sample sizes for the posterior chains of the parameters. If you actually have the chains, your code will produce the effective sample sizes.
+
+5.  If you could actually produce the diagnostics, you will notice that the R-L diagnostic for $\sigma^2_{batch}$ and $\sigma_{batch}$ are higher than the R-L diagnostics for $\sigma^2_{error}$ and $\sigma_{error}$.  In fact, the batch standard deviation and variance R-L diagnostics are borderline unacceptable.  Why do you think the estimates involving the error of replication within a batch are easier to estimate than the batch to batch variability?
+
+6.  In statistics, we often are interested in something called the Intraclass correlation or ICC.  For this problem,
+the ICC would be calculated as $\sigma^2_{batch}/(\sigma^2_{batch}+\sigma^2_{error})$.  Using your chains, plot the estimated posterior density of the ICC for this problem.
+
+The next set of problems will use a data set that shows the growth of rats.  The data file is called **rats.dat** and contains five columns, the weight of
+each animal at day 8, 15, 22, 29, and 36.  Use JAGS as the modeling software for this group of problems.
+
+7. Read in the
+data and plot the growth of rat1 and rat29 on the same axes.
+
+8.  Hopefully, you can see that the growth is fairly linear, but differs from rat to rat.  Write the JAGS code to estimate the growth as a linear regression with no regard for the different rats.  That is, ignore the fact that the data points represent 30 different animals, and treat all the data as independent.  Use priors of normal(mean=0,precision=.0001) for both $\beta_0$ and $\beta_1$.  Use a gamma(shape=2,rate=.01) as the prior for $\sigma^2_{error}$. Use the same number of iterations, burnin, thin, chains, and seed that you used in problem 2. What is DIC for this model? (Note: you may find it easier to do this problem if you rearrange the data.)
+
+9.  Now please make this into a hierarchical model for the intercepts.  That is, you are considering the rats to be a random sample of all possible rats, and you are drawing the individual rat intercepts from a normal population with mean $\mu_{intercepts}$ and variance $\sigma^2_{intercepts}$. Use a normal prior for $\mu_{ntercepts}$ with mean 0 and precision .0001.  Use a gamma prior for $\sigma^2_{intercepts}$ with shape 2 and rate .01.
+Use the same prior as in problem 8 for $\beta_1$.  Use a gamma prior for $\sigma^2_{error}$ with shape 2 and rate .05.  Use the same number of iterations, burnin, thin, chains, and seed that you used in problem 8.  What is the DIC for this model?
+
+10.  Now adapt what you did in problem 9 to make a hierarchical model for slopes as well as intercepts.  Use a normal prior for $\mu_{slopes}$ with mean 0 and precision .0001.  Use a gamma prior for $\sigma^2_{slopes}$ with shape 1.1 and rate 1.  Use the same control parameters as in problem 9.  What is the DIC for this model?
+
+11.  Which of the models in 8, 9, and 10 would you prefer?  Why?
+
+12.  Regardless of your answer in number 11, rerun the model in problem 10.  Make sure that all parameters are being saved.  Compute the Raftery-Louis diagnostic for all the parameters.  Are there any R-L diagnostics that we should be concerned about?
+
+For the next set of problems, you will be using the data set **dugong.dat**.  These data concern growth of dugongs (sometimes called sea cows, an aquatic mammal found primarily in the Indo-West Pacific).  The
+data file contains two columns, the age of the animal in years, and the length of the animal in meters for 
+27 individuals.  Use JAGS for the models in this section.
+
+13.  Read in the data and plot it with age on the x-axis and length on the y-axis.
+
+14.  You will note that growth is faster for younger animals, and slows as the animal matures.  This type of growth is called nonlinear growth, and the simplest curve to describe such growth is:
+\begin{equation}
+   y_i = a - bg^{x_i},
+\end{equation}
+where $y_i$ represents the length of the animal and $x_i$ represents the age of the animal.  As you can see, there are three parameters to
+estimate, $a, b,$ and $g$.  'a' represents the asymptote or value at which growth stops, 'b' is constrained to be positive, and 'g' is constrained 
+to be between 0 and 1.  Use a normal with mean 3 and precision .01 as the prior for parameter $a$.  Use a gamma with shape 1.1 and rate .1 for parameter $b$.  And use a Uniform(0,1) prior for parameter $g$.  You may assume the likelihood is normal.  Use a gamma with shape 2 and rate .1 for the prior for $\sigma^2_{error}$.  Use the same control parameters as we have used in previous problems. What is the DIC of the model?
+
+15.  What is the Raftery-Louis diagnostic for the asymptote parameter?
+
+16.  Do you think you have a problem?  Why?
+
+17.  Rerun the code from problem 14 with 10 times the number of iterations and burnins, and thin by 10.  Now what is the R-L diagnostic for $a$?
+
+18.  What is the 95% equal tail posterior probability interval for the asymptote parameter?
+
+19.  There is a small posterior probability that the asymptote parameter could be greater than 3.  What is that probability?
+
+20.  Using the output from the code in problem 17, put a best fit line on your plot of the raw data.  Use the posterior means of the parameters for the line.
+
+21.  Now plot the data points, the best fit line, and 95% posterior probability intervals for the line.
+
+The next data set concerns survival of mice under different treatment conditions. The data file is called **mice.dat** and contains four columns: a mouse id, the treatment (there are four), the number of days the
+mouse survived, and a censored survival time (that is, the time the mouse survived was not recorded exactly,
+but the experimenters know the mouse survived at least as long as the time in this column).  When you are asked to produce posterior distributions in this section, you should use SAS.
+
+22.  Produce a boxplot of the survival time by the treatment conditions.  Take out all the censored data prior to making the plot.
+
+23.  Produce another boxplot, this time putting the censored time in place of 0 in the time variable.
+
+24.  We expect survival times to be exponential or gamma, but for these data, we don't, in general, see very long tails.  So for this problem, we are going to assume the survival time (likelihood) is normally distributed, with different means, and different variances in each treatment.  Assume the prior distributions on the treatment means are all normal with mean 25 and variance 1000.  Assume the prior distributions on the treatment variances are gamma with shape 4 and scale 10.  Use SAS.  Use the following control parameters: nmc=400000 nbi=5000 thin=10 seed=1234. Also use propcov=quanew. What is the mean of the survival time of treatment 2.
+
+25.  What is the probability that the survival time in treatment 2 exceeds the survival time in treatment 1?
+

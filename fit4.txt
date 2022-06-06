@@ -1,0 +1,23 @@
+
+  model {
+  
+  for (i in 1:150){
+    weight[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0[rat[i]] + b1[rat[i]]*days[i]
+  }
+  
+  for(i in 1:30){
+      b0[i] ~ dnorm(mub0, 1/vvint)
+      b1[i] ~ dnorm(mub1, 1/vvslp)
+  }
+  
+  vvint ~ dgamma(2, 0.05)
+  mub0 ~ dnorm(0, 0.0001)
+  
+  vvslp ~ dgamma(1.1, 1)
+  mub1 ~ dnorm(0, .00001)
+  
+  vv ~ dgamma(1.1, 0.5)
+  }
+
+

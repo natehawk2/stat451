@@ -1,0 +1,20 @@
+
+  model {
+  
+  for (i in 1:60){
+    yield[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- b0 + b1*moisture[i] + u[variety[i]]
+  }
+  
+  for(i in 1:10){
+      u[i] ~ dnorm(0, 1/vvint)
+  }
+  
+  b0 ~ dnorm(30, 0.0001)
+  b1 ~ dnorm(0, 0.0001)
+  vv ~ dgamma(2, 0.25)
+  vvint ~ dgamma(2, .1)
+
+  }
+
+

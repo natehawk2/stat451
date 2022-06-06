@@ -1,0 +1,14 @@
+
+model {
+
+  for(i in 1:28){
+    y[i] ~ dnorm(mu[tmt[i]],1/s2[tmt[i]])
+  }
+  
+  for(i in 1:4){
+    mu[i] ~ dnorm(20, .0001)
+  s2[i] ~ dgamma(2, .1)
+  }
+
+}
+

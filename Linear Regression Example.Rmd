@@ -1,0 +1,149 @@
+---
+title: "Linear Regression"
+author: "Nathan Hawkins"
+date: "1/21/2021"
+output: html_document
+---
+
+```{r}
+library('R2jags')
+regdat <- read.table("C:/Users/nateh/Downloads/linreg.dat")
+names(regdat) <- c('manhours', 'lotsize')
+
+```
+
+Model has to be lowercase
+```{r}
+mdl3 <- "
+  model {
+  
+    for(i in 1:10){
+      y[i] ~ dnorm(mu[i], prec)
+      mu[i] <- b0 + b1*x[i]
+    }
+    
+    #Priors
+    b0 ~ dnorm(0, .001)
+    b1 ~ dnorm(0, .002)
+    prec <- 1/vr
+    
+    #Variance
+    vr ~ dgamma(1.1, .1667)
+    
+  }
+"
+
+writeLines(mdl3, 'linreg.txt')
+
+x <- regdat$manhours
+y <- regdat$lotsize
+
+data.jags <- c('x', 'y')
+parms <- c('b0', 'b1', 'vr')
+
+linreg.sim <- jags(data.jags, 
+                    inits = NULL, 
+                    parameters.to.save = parms,
+                    model.file = 'linreg.txt',
+                    n.iter = 35000,
+                    n.burnin = 10000,
+                    n.chains = 4,
+                    n.thin = 10)
+
+linreg.sim
+
+
+#best fit line, use linreg.sim to get parameters
+plot(x,y)
+abline(9.91, 2.001)
+
+#95% posterior interval for a line
+
+
+```
+Only difference between anova and linear regression is that there is a function for x
+
+Intermediary Steps
+```{r}
+sims <- as.mcmc(linereg.sim)
+chains <- as.matrix(sims)
+colnames(chains)
+dim(chains)
+
+b0 <- chains[,1]
+b1 <- chains[,2]
+vr <- chains[,4]
+
+
+mean(b0)
+mean(b1)
+
+#Trace Plots
+plot(b0, type = 'l')
+plot(b1, type = 'l')
+```
+
+Plot best fit line with data, 100% lines
+```{r}
+plot(x,y)
+
+#Plot all 10000 lines!
+
+for(i in 1:10000){
+  abline(b0[i], b1[i], col = 'orchid')
+}
+
+abline(mean(b0), mean(b1))
+```
+
+```{r}
+cor(b0,b1)
+# The bigger the slope the smaller the intercept, very typical
+# in linear regression
+```
+
+
+Create a vector of possible values for x
+```{r}
+xx <- seq(20,80,by = 5)
+#Fitted Values
+b0[1] + b1[1] * xx
+
+#Fit each x value
+fittedy <- matrix(0, 10000, 13)
+for(i in 1:10000){
+  fittedy[i,] <- b0[i] + b1[i] * xx
+}
+
+dim(fittedy)
+# 10 fitted values for x = 20
+fittedy[1:10,1]
+
+#POSTERIOR INTERVALS, like the confidence interval
+plot(xx,apply(fittedy, 2, quantile, 0.975), col = 'blue', type = 'l')
+lines(xx,apply(fittedy, 2, quantile, 0.025), col = 'blue')
+
+#Find 97.5% quantile for the intercepts for x = 20
+quantile(fittedy[,1], c(.025,.975))
+#Find 97.5% quantile for each column
+apply(fittedy,2,quantile,.975)
+```
+
+
+Posterior Predictive Interval, we not only want the line, we want the predicted values. Predicted y's are not just on the line. They're on the line + noise
+```{r}
+#Make Predictions
+predicted_y <- matrix(0, 10000, 13)
+for(i in 1:10000){
+  predicted_y[i,] <- b0[i] + b1[i] * xx + rnorm(1,0,sqrt(vr[i]))
+}
+
+```
+Plot Posterior Predictive FOR NEW DATA
+```{r}
+plot(x,y)
+abline(mean(b0), mean(b1))
+lines(xx,apply(predicted_y, 2, quantile, 0.975), col = 'red', type = 'l')
+lines(xx,apply(predicted_y, 2, quantile, 0.025), col = 'red')
+```
+

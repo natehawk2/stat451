@@ -1,0 +1,12 @@
+
+  model {
+    
+    for(i in 1:718){
+      response[i] ~ dbern(p[i])
+      logit(p[i]) <- b0 + b1*time[i]
+    }
+     # Prior Values
+      b1 ~ dnorm(0, 0.001)
+      b0 ~ dnorm(0, 0.001)
+  }
+

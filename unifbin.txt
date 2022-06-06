@@ -1,0 +1,8 @@
+
+  model {
+    for( i in 1:8 ){
+      CHD[i] ~ dbin(p[i], nRisk[i])
+      p[i] ~ dunif(0,1)
+    }
+  }  
+

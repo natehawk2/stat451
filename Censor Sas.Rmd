@@ -1,0 +1,141 @@
+---
+title: "Censor Ex Sas"
+author: "Nathan Hawkins"
+date: "4/6/2021"
+output: html_document
+---
+
+```{r}
+situp <- read.table("situp.dat", header = TRUE)
+head(situp)
+hist(situp$situps)
+curve(dgamma(x,2,.1), from = 0, to = 500)
+
+curve(pgamma(x,2,.1), from = 0, to = 500)
+
+curve(pexp(x,.05), from = 0, to = 500)
+
+```
+
+# For censored data use sdf. For the data you know use pdf.
+```{sas}
+
+data situp;
+infile 'C:/Users/nateh/Documents/Stat 451/situp.dat' firstobs = 2;
+input id situps cens uwm uwf hm hf owm owf obm obf;
+if uwm = 1 then tmt = 1;
+else if uwf = 1 then tmt = 2;
+else if hm = 1 then tmt = 3;
+else if hf = 1 then tmt = 4;
+else if owm = 1 then tmt = 5;
+else if owf = 1 then tmt = 6;
+else if obm = 1 then tmt = 7;
+else tmt = 8;
+run;
+
+proc mcmc data = situp outpost = 'C:/Users/nateh/Documents/Stat 451/situp.sas7bdat' seed = 1234 nmc = 200000
+nbi = 20000 thin = 10 monitor = (_parms_)
+diagnostics = (rl ess autocorr) dic propcov = quanew;
+array mu[8] mu1-mu8;
+parms mu:;
+prior mu: ~ gamma(shape = 2, scale = 10);
+theta = mu[tmt];
+if cens = 0 then ll = logpdf('expon', situps, theta);
+else ll = logsdf('expon', situps, theta);
+model general(ll);
+run;
+endsas;
+```
+
+```{r}
+library(sas7bdat)
+chains <- read.sas7bdat('C:/Users/nateh/Documents/Stat 451/situp.sas7bdat')
+chains <- chains[,-1]
+chains[1,]
+library(coda)
+sims <- as.mcmc(chains)
+raftery.diag(sims)
+effectiveSize(sims)
+uwm <- chains[,1]
+uwf <- chains[,2]
+hm <- chains[,3]
+hf <- chains[,4]
+owm <- chains[,5]
+owf <- chains[,6]
+obm <- chains[,7]
+obf <- chains[,8]
+
+# You just have to span the space with interactions
+int1 <- (uwm-uwf-hm+hf)
+int2 <- (hm-hf-owm+owf)
+int3 <- (owm-owf-obm+obf)
+plot(density(int1))
+lines(density(int2), col = "blue")
+lines(density(int3), col = "red")
+```
+
+Is there a gender differnce?
+78% probability that women do more situps than men.
+```{r}
+fmdif <- (uwf+hf+owf+obf)/4 - (uwm+hm+owm+obm)/4
+plot(density(fmdif))
+mean(fmdif>0)
+```
+
+Now check underweight vs healthy weight
+```{r}
+uw <- (uwf + uwm)/2
+hw <- (hm + hf)/2
+plot(density(uw-hw))
+quantile(uw-hw, probs = c(.025,.975))
+```
+Underweight and obese
+about the same
+```{r}
+ow <- (obm+obf)/2
+plot(density(uw-ow))
+mean(uw-ow > 0)
+```
+
+
+
+
+```{sas}
+data situp;
+infile 'C:/Users/nateh/Documents/Stat 451/situp.dat' firstobs = 2;
+input id situps cens uwm uwf hm hf owm owf obm obf;
+if uwm = 1 then tmt = 1;
+else if uwf = 1 then tmt = 2;
+else if hm = 1 then tmt = 3;
+else if hf = 1 then tmt = 4;
+else if owm = 1 then tmt = 5;
+else if owf = 1 then tmt = 6;
+else if obm = 1 then tmt = 7;
+else tmt = 8;
+run;
+
+proc mcmc data = situp outpost = 'C:/Users/nateh/Documents/Stat 451/situp.sas7bdat' seed = 1234 nmc = 200000
+nbi = 20000 thin = 200 monitor = (_parms_)
+diagnostics = (rl ess autocorr) dic propcov = quanew;
+array mu[8] mu1-mu8;
+array sh[8] sh1-sh8;
+array sc[8] sc1-sc8;
+parms mu:;
+parms sh:;
+parms sc:;
+prior sh: ~ gamma(shape = 1.1, scale = 5);
+prior sc: ~ gamma(shape = 2, scale = 10);
+alpha = sh[tmt];
+beta = sc[tmt];
+if cens = 0 then ll = logpdf('gamma', situps, alpha, beta);
+else ll = logsdf('expon', situps, alpha, beta);
+model general(ll);
+mu[tmt] = sh[tmt]*sc[tmt]
+run;
+endsas;
+```
+
+# If it's right censored data then we use logsdf
+# If it's left censored data then we use logcdf
+# Help proc mcmc censored data
+# Sdf is 1-cdf

@@ -1,0 +1,201 @@
+---
+title: "HW 5"
+author: "Nathan Hawkins"
+date: "2/26/2021"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r}
+crack <- read.table("C:/Users/nateh/Downloads/cracker.dat", header = TRUE)
+
+```
+# 1 Different slopes and intercepts for each treatment
+
+```{r}
+library(R2jags)
+head(crack)
+
+
+
+mdl <- 
+  "model {
+  
+  for(i in 1:14){
+    sales[i] ~ dnorm(mu[i], 1/vv);
+    mu[i] <- b0[tmt[i]] + b1[tmt[i]]*presales[i];
+  }
+  
+  for(i in 1:3){
+  b0[i] ~ dnorm(25, .001);
+  b1[i] ~ dnorm(0, .001);
+  }
+  
+  vv ~ dgamma(1.5, .5);
+  
+  }
+  
+
+"
+
+writeLines(mdl, 'ancova.txt')
+sales <- crack$sales
+presales <- crack$presales
+tmt <- crack$tmt
+
+data.jags <- c('sales', 'presales', 'tmt')
+parms <- c('b0', 'b1', 'vv')
+
+ancova.sim <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'ancova.txt', inits = NULL,
+                  n.iter = 100000, n.thin = 500, n.burnin = 1000,
+                  n.chains = 5)
+ancova.sim  
+```
+# 2 
+Check the differences between the slopes. There doesn't appear to be any significant difference in slope.
+
+```{r}
+sims <- as.mcmc(ancova.sim)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+
+
+b11 <- chains[,4]
+b12 <- chains[,5]
+b13 <- chains[,6]
+
+plot(density(b11 - b12))
+plot(density(b11 - b13))
+plot(density(b13 - b12))
+
+quantile(b11-b12, probs = c(.025, .975))
+quantile(b11-b13, probs = c(.025, .975))
+quantile(b13-b12, probs = c(.025, .975))
+
+
+```
+
+# 3 Same slope for each treatment. Different Intercepts
+
+```{r}
+library(R2jags)
+head(crack)
+
+
+
+mdl2 <- 
+  "model {
+  
+  for(i in 1:14){
+    sales[i] ~ dnorm(mu[i], 1/vv);
+    mu[i] <- b0[tmt[i]] + b1*presales[i];
+  }
+  
+  for(i in 1:3){
+    b0[i] ~ dnorm(3, .001);
+  }
+  
+  b1 ~ dnorm(0, .01);
+  vv ~ dgamma(1, .125);
+  
+  }
+  
+
+"
+
+writeLines(mdl2, 'ancova2.txt')
+sales <- crack$sales
+presales <- crack$presales
+tmt <- crack$tmt
+
+data.jags <- c('sales', 'presales', 'tmt')
+parms <- c('b0', 'b1', 'vv')
+
+ancova2.sim <- jags(data= data.jags, parameters.to.save = parms,
+                  model.file = 'ancova2.txt', inits = NULL,
+                  n.iter = 100000, n.thin = 2, n.burnin = 1000,
+                  n.chains = 5)
+ancova2.sim  
+
+```
+
+This second model gives a lower DIC (65.1) than the first model (66.2). I believe that one slope should be enough.
+
+
+# 4
+
+Using 28 as a comparison point. Plots of differences in the values at presales = 28. Both the plots and the quantile show that there is a signifanct difference between treatments one and three, and treatments two and three. Treatments one and two, however, are not statistically significant.
+
+# SAS Code
+
+data cracker;
+infile 'C:/Users/nateh/Downloads/cracker.dat';
+input tmt presales sales;
+run;
+
+
+
+proc mcmc data = cracker outpost = 'C:/Users/nateh/Documents/Stat 451/ancova_sas.sas7bdat' seed = 1234 
+nmc = 5000000 nbi= 1000 monitor=(_parms_) thin = 200 diagnostics=(rl ess autocorr) dic propcov=quanew;
+  array b0[3] b01-b03;
+  parms b01 0;
+  parms b02 0;
+  parms b03 0; 
+  parms b11 0;
+  parms vv 20;
+  prior b01: ~ normal(0, var = 1000);
+  prior b02: ~ normal(0, var = 1000);
+  prior b03: ~ normal(0, var = 1000);
+  prior b11: ~ normal(0, var = 1000);
+  prior vv ~ gamma(1, scale = 8);
+  mu = b0[tmt]+b11*28;
+  model sales ~ normal(mu, var = vv);
+run;
+
+  
+
+# R code
+
+```{r}
+library(haven)
+sasoutput <- read_sas('ancova_sas.sas7bdat')
+sas.sims <- as.mcmc(sasoutput)
+sas.chains <- as.matrix(sas.sims)
+
+raftery.diag(sas.chains)
+colnames(sas.chains)
+
+sasb01 = sas.chains[,2]
+sasb02 = sas.chains[,3]
+sasb03 = sas.chains[,4]
+
+sasb1 = sas.chains[,5]
+
+
+mean(sasb01)
+mean(sasb02)
+mean(sasb03)
+
+mean(sasb1)
+
+newchain1 <- sasb1*28 + sasb01
+newchain2 <- sasb1*28 + sasb02
+newchain3 <- sasb1*28 + sasb03
+
+mean(newchain1)
+mean(newchain2)
+mean(newchain3)
+
+
+plot(density(newchain1 - newchain2))
+plot(density(newchain1 - newchain3))
+plot(density(newchain2 - newchain3))
+
+quantile(newchain1 - newchain2, probs = c(.025, .975))
+quantile(newchain1 - newchain3, probs = c(.025, .975))
+quantile(newchain2 - newchain3, probs = c(.025, .975))
+
+```
+

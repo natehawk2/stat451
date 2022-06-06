@@ -1,0 +1,16 @@
+
+  model {
+  
+  for (i in 1:27){
+    length[i] ~ dnorm(mu[i], 1/vv)
+    mu[i] <- (a - b*g^(age[i]))
+  }
+  
+  g ~ dunif(0,1)
+  b ~ dgamma(1.1, .1)
+  a ~ dnorm(3, 0.01)
+  vv ~ dgamma(2, 0.1)
+  
+  }
+
+

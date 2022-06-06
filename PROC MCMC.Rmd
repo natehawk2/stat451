@@ -1,0 +1,127 @@
+---
+title: "Proc MCMC"
+author: "Nathan Hawkins"
+date: "2/2/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+
+```{r}
+library(haven)
+```
+
+```{r setup}
+library(SASmarkdown)
+
+# set up the options so that knit knows where you SAS executable is
+# set the linesize to be easily readable on letter size paper, portrait
+# and set the knir options using opts_chunk$set().
+
+saspath <- "C:/Program Files/SASHome/SASFoundation/9.4/sas.exe"
+sasopts <- "-nosplash -ls 75"
+knitr::opts_chunk$set(engine="sas", engine.path=saspath, 
+        engine.opts=sasopts, comment=NA)
+
+knitr::opts_chunk$get()$engine
+knitr::opts_chunk$get()$engine.path
+knitr::opts_chunk$get()$engine.opts
+```
+
+```{sas ex-sas}
+
+data westwood;
+infile 'C:/Users/nateh/Documents/Stat 451/westwood.dat';
+input x y;
+run;
+
+proc means data=westwood;
+run;
+
+
+
+proc mcmc data = westwood outpost = 'C:/Users/nateh/Documents/Stat 451/linregpost.sas7bdat' seed = 1234 nmc = 100000 nbi= 10000 monitor=(_parms_) thin = 10 diagnostics=(rl ess autocorr) dic propcov=quanew;
+  parms b0 0 b1 0;
+  parms s2 20;
+  prior b0 ~ normal(0, var = 10000);
+  prior b1 ~ normal(0, var = 10000);
+  prior s2 ~ gamma(1.5, scale = 2);
+  mu = b0+b1*x;
+  model y ~ normal(mu, var = s2);
+  run;
+  endsas;
+
+```
+
+
+# westwoodmcmc <- read_sas('C:/Users/nateh/Documents/Stat 451/linregpost.sas7bdat')
+# dim(westwoodmcmc)
+# plot(westwoodmcmc$b0, type  = 'l')
+# plot(westwoodmcmc$b1, type = 'l')
+# plot(westwoodmcmc$s2, type = 'l')
+
+
+# Anova in Sas
+```{sas}
+
+data westwood;
+infile 'C:/Users/nateh/Documents/Stat 451/westwood.dat';
+input x y;
+run;
+
+proc means data=westwood;
+run;
+
+
+
+proc mcmc data = westwood outpost = 'C:/Users/nateh/Documents/Stat 451/linregpost.sas7bdat' seed = 1234 nmc = 100000 nbi= 10000 monitor=(_parms_) thin = 10 diagnostics=(rl ess autocorr) dic propcov=quanew;
+  parms b0 0 b1 0;
+  parms s2 20;
+  prior b0 ~ normal(0, var = 10000);
+  prior b1 ~ normal(0, var = 10000);
+  prior s2 ~ gamma(1.5, scale = 2);
+  mu = b0+b1*x;
+  model y ~ normal(mu, var = s2);
+  run;
+  endsas;
+
+
+```
+
+```{sas}
+data anova;
+infile 'C:/Users/nateh/Downloads/anova.dat';
+input x y;
+run;
+
+proc means data=anova;
+run;
+```
+
+
+```{sas ex-sas}
+data anova;
+infile 'C:/Users/nateh/Downloads/anova (1).dat';
+input tmt rsp dummy;
+run;
+
+proc means data=anova;
+run;
+```
+
+proc mcmc data = anova nbi = 30000 nmc = 300000 thin = 30 outpost = 'C:/Users/nateh/Documents/Stat 451/anovaout.sas7bdat' dic propcov=quanew            monitor=(_parms_) stats = all diagnostics = all;
+array mu[4] mu1-mu4;
+array vv[4] vv1-vv4;
+parms mu: 0;
+parms vv: 10;
+prior mu: ~ normal(10, var = 1000);
+prior vv: ~ gamma(1.5, scale = 10);
+model rsp ~ normal(mu[tmt], var = vv[tmt]);
+run;
+endsas;
+
+
+```
+# Do prior vv[1] ~ gamma(whatever)

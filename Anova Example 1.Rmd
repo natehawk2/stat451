@@ -1,0 +1,259 @@
+---
+title: "Anova Example 1"
+author: "Nathan Hawkins"
+date: "1/19/2021"
+output: html_document
+---
+
+This is a simple ANOVA exmple to illustrate that as Bayesians we estimate parameters, we don't worry about the distribution of test statistics.
+
+Read in data, name columns
+```{r}
+dat <- read.table("C:/Users/nateh/Downloads/anova.dat")
+names(dat) <- c('tmt', 'rsp', 'dummy')
+```
+
+One way anova with 4 treatments
+Frequentists would test null hypothesis that all treatments are the same
+Bayesians estimate the parameters with change
+
+Get JAGS to get posterior chains that are drawn from the posterior distribution of the parameters.
+```{r}
+library(R2jags)
+
+# Decide likelihood, model, and priors
+# Jags uses 'precisions' instead of variances. 1/s2 is the precision
+# In Jags then the second argument of dnorm is precision
+# Big Variance means small Precision
+
+# Write the model in Jags
+
+mdl <- "
+model {
+
+  for(i in 1:28){
+    y[i] ~ dnorm(mu[tmt[i]],1/s2)
+  }
+  
+  for(i in 1:4){
+    mu[i] ~ dnorm(20, .0001)
+  }
+  
+  s2 ~ dgamma(2, .1)
+
+}
+"
+
+
+# Plot the prior for mu using r syntax, note the variance is 1/precision
+curve(dnorm(x, 20 , sqrt(10000)), from = -150, to = 200)
+
+#Check the prior for variance, 'I think my variance is in this range'
+curve(dgamma(x, 2, .1), from = 0, to = 100)
+```
+
+
+Now run the JAGS code
+```{r}
+writeLines(mdl, 'a1.txt')
+y <- dat$rsp
+tmt <- dat$tmt
+data.jags <- c('y','tmt')
+parms <- c('mu', 's2')
+
+a1.sim <- jags(data = data.jags, inits = NULL,
+               parameters.to.save = parms,
+               model.file = 'a1.txt',
+               n.iter = 16000,
+               n.burnin = 1000,
+               n.chains = 4,
+               n.thin = 3)
+
+a1.sim
+
+
+sims <- as.mcmc(a1.sim)
+chains <- as.matrix(sims)
+dim(chains)
+head(chains)
+sims <- as.mcmc(chains)
+```
+
+Check Convergence diagnostics. Rhat above indicates the chains are getting to the same place. I will check auto correlation, effective sample size, and how good the tails of the distributions are.
+
+```{r}
+library(coda)
+
+plot(chains[,2], type = 'l')
+
+effectiveSize(sims)
+
+autocorr.diag(sims)
+
+raftery.diag(sims)
+#Factor(I) should be less than 5, ideally less than 3. If it's too high then we need to thin more.
+```
+
+Inference using our posterior distributions.
+
+With joint posterios we can compare means
+
+```{r}
+cor(chains[,c(2:6)])
+mu1 <- chains[,2]
+plot(density(mu1))
+mu2 <- chains[,3]
+lines(density(mu2), col = 'blue')
+mu3 <- chains[,4]
+lines(density(mu3), col = 'red')
+mu4 <- chains[,5]
+lines(density(mu4), col = 'orchid')
+
+#Look at joint densities
+diffmu12 = mu1-mu2
+plot(density(diffmu12), main = 'Difference Between mu1 and mu2')
+diffmu13 = mu1-mu3
+plot(density(mu1-mu3))
+diffmu14 = mu1-mu4
+plot(density(diffmu14), main = 'Difference Between mu1 and mu4')
+
+diffmu24 = mu2-mu4
+diffmu23 = mu2 - mu3
+diffmu34 = mu3-mu4
+
+
+mean(diffmu12 > 0)
+mean(diffmu13 > 0)
+mean(diffmu14 > 0)
+mean(diffmu23 > 0)
+mean(diffmu24 > 0)
+mean(diffmu34 > 0)
+
+quantile(probs = c(.025, .975), diffmu12)
+quantile(probs = c(.025, .975), diffmu13)
+quantile(probs = c(.025, .975), diffmu14)
+quantile(probs = c(.025, .975), diffmu23)
+quantile(probs = c(.025, .975), diffmu24)
+quantile(probs = c(.025, .975), diffmu34)
+```
+
+These 4 treatments come from a 2x2 design. Mu 1 is level 11 mu2 is level 12 mu 3 is level 21 mu4 is level 22.
+
+```{r}
+tmt1 <- rep(1:2, each = 14)
+tmt2 <- rep(1:2, each = 7, times = 2)
+dat$tmt1 <- tmt1
+dat$tmt2 <- tmt2
+dat
+```
+
+Now let's run JAGS using this design.
+We changed what's in the dnorm
+
+```{r}
+
+mdl2 <- "
+model {
+
+  for(i in 1:28){
+    y[i] ~ dnorm(mu[tmt1[i],tmt2[i]],1/s2)
+  }
+  
+  for(i in 1:2){
+    for(j in 1:2){
+      mu[i,j] ~ dnorm(20, .0001)
+    }
+  }
+  
+  s2 ~ dgamma(2, .1)
+
+}
+"
+
+writeLines(mdl2, 'a2.txt')
+y <- dat$rsp
+tmt1 <- dat$tmt1
+tmt2 <- dat$tmt2
+
+data.jags <- c('y','tmt1', 'tmt2')
+parms <- c('mu', 's2')
+
+a2.sim <- jags(data = data.jags, inits = NULL,
+               parameters.to.save = parms,
+               model.file = 'a2.txt',
+               n.iter = 16000,
+               n.burnin = 1000,
+               n.chains = 4,
+               n.thin = 3)
+
+a2.sim
+```
+
+
+
+1/26/2021
+
+What if we don't think the variances within each treatment are equal? Just put a different variance for each treatment in the likelihood. 
+
+same code as before but let the variance change by treatment. include s2[tmt[i]].
+
+
+```{r}
+
+# Decide likelihood, model, and priors
+# Jags uses 'precisions' instead of variances. 1/s2 is the precision
+# In Jags then the second argument of dnorm is precision
+# Big Variance means small Precision
+
+# Write the model in Jags
+
+mdl <- "
+model {
+
+  for(i in 1:28){
+    y[i] ~ dnorm(mu[tmt[i]],1/s2[tmt[i]])
+  }
+  
+  for(i in 1:4){
+    mu[i] ~ dnorm(20, .0001)
+  s2[i] ~ dgamma(2, .1)
+  }
+
+}
+"
+
+writeLines(mdl, 'a3.txt')
+y <- dat$rsp
+tmt <- dat$tmt
+data.jags <- c('y','tmt')
+parms <- c('mu', 's2')
+
+a3.sim <- jags(data = data.jags, inits = NULL,
+               parameters.to.save = parms,
+               model.file = 'a3.txt',
+               n.iter = 16000,
+               n.burnin = 1000,
+               n.chains = 4,
+               n.thin = 3)
+
+a3.sim
+
+
+sims <- as.mcmc(a3.sim)
+chains <- as.matrix(sims)
+dim(chains)
+head(chains)
+sims <- as.mcmc(chains)
+head(sims)
+
+apply(sims, 2, mean)
+```
+Lower deviance is better. Adding the unequal variances didn't help that much. pD is a measure of parameters. Deviance is a measure of fit. Don't need the variances. DIC is lower for one variance model. Lower deviance and pD is better. 
+DIC is deviance + penalty for parameters.
+
+
+
+
+
+
+

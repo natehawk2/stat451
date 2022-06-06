@@ -1,0 +1,363 @@
+---
+title: "HW 4"
+author: "Nathan Hawkins"
+date: "2/11/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+vo2 <- read.table("vo2.dat", header = TRUE)
+head(vo2)
+```
+
+# 1 
+Running MLR with the 6 covariates, I get a DIC of 756.3.
+
+```{r}
+library(R2jags)
+mdl <- "
+  model {
+  
+  for(i in 1:120){
+    y[i] ~ dnorm(mu[i], prec)
+    mu[i] <- b0 +  bgen*gender[i] + bbmi*bmi[i] + brpe*rpe[i]+ bhr*hr[i] + bmph*mph[i] + bage*age[i]
+  }
+  
+  b0 ~ dnorm(0 , 0.001)
+  bgen ~ dnorm(0, 0.001)
+  bbmi ~ dnorm(0, 0.001)
+  brpe ~ dnorm(0, 0.001)
+  bhr ~ dnorm(0, 0.001)
+  bmph ~ dnorm(0, 0.001)
+  bage ~ dnorm(0, 0.001)
+  
+  prec <- 1/vv
+  vv ~ dgamma(1.5, 0.2)
+  
+  }
+
+"
+#Assing simple names for covariates
+mph <- vo2$MPH
+bmi <- vo2$BMI
+gender <- vo2$Gender
+y <- vo2$MaxVO2ML
+rpe <- vo2$RPE
+hr <- vo2$HR
+age <- vo2$Age1
+
+
+# Standardize the covariates
+mph <- (mph-mean(mph))/sd(mph)
+bmi <- (bmi-mean(bmi))/sd(bmi)
+gender <- (gender-mean(gender))/sd(gender)
+rpe <- (rpe-mean(rpe))/sd(rpe)
+age <- (age-mean(age))/sd(age)
+hr <- (hr-mean(hr))/sd(hr)
+mphhr <- mph*hr
+
+
+
+
+
+writeLines(mdl, 'vo2.txt')
+
+#What to use
+data.jags <- c('y', 'gender', 'bmi', 'rpe', 'mph', 'hr', 'age')
+
+#What to call it in the output
+parms.jags <- c('b0', "brpe", 'bgen', 'bbmi', 'bmph', 'vv', 'bhr', 'bage')
+
+vo2.sim <- jags(data= data.jags, parameters.to.save = parms.jags,
+                  model.file = 'vo2.txt', inits = NULL,
+                  n.iter = 6000, n.thin = 1, n.chains = 4,
+                  n.burnin = 1000)
+
+
+vo2.sim
+```
+
+# 2
+Running the same model but without age, I get a DIC of 755.1.
+
+```{r}
+library(R2jags)
+mdl2 <- "
+  model {
+  
+  for(i in 1:120){
+    y[i] ~ dnorm(mu[i], prec)
+    mu[i] <- b0 +  bgen*gender[i] + bbmi*bmi[i] + brpe*rpe[i]+ bhr*hr[i] + bmph*mph[i]
+  }
+  
+  b0 ~ dnorm(0 , 0.001)
+  bgen ~ dnorm(0, 0.001)
+  bbmi ~ dnorm(0, 0.001)
+  brpe ~ dnorm(0, 0.001)
+  bhr ~ dnorm(0, 0.001)
+  bmph ~ dnorm(0, 0.001)
+  
+  prec <- 1/vv
+  vv ~ dgamma(1.5, 0.2)
+  
+  }
+
+"
+#Assing simple names for covariates
+mph <- vo2$MPH
+bmi <- vo2$BMI
+gender <- vo2$Gender
+y <- vo2$MaxVO2ML
+rpe <- vo2$RPE
+hr <- vo2$HR
+age <- vo2$Age1
+
+
+# Standardize the covariates
+mph <- (mph-mean(mph))/sd(mph)
+bmi <- (bmi-mean(bmi))/sd(bmi)
+gender <- (gender-mean(gender))/sd(gender)
+rpe <- (rpe-mean(rpe))/sd(rpe)
+age <- (age-mean(age))/sd(age)
+hr <- (hr-mean(hr))/sd(hr)
+
+
+
+
+
+
+writeLines(mdl2, 'vo2_v2.txt')
+
+#What to use
+data.jags <- c('y', 'gender', 'bmi', 'rpe', 'mph', 'hr')
+
+#What to call it in the output
+parms.jags <- c('b0', "brpe", 'bgen', 'bbmi', 'bmph', 'vv', 'bhr')
+
+vo2_v2.sim <- jags(data= data.jags, parameters.to.save = parms.jags,
+                  model.file = 'vo2_v2.txt', inits = NULL,
+                  n.iter = 6000, n.thin = 1, n.chains = 4,
+                  n.burnin = 1000)
+
+
+vo2_v2.sim
+```
+
+
+# 3 
+I would choose the second model because it has a lower DIC so it is better at predicting with fewer covariates.
+
+
+# 4
+Same model but with mph*hr. This model has a DIC of 753.5.
+
+```{r}
+library(R2jags)
+mdl3 <- "
+  model {
+  
+  for(i in 1:120){
+    y[i] ~ dnorm(mu[i], prec)
+    mu[i] <- b0 +  bgen*gender[i] + bbmi*bmi[i] + brpe*rpe[i]+ bhr*hr[i] + bmph*mph[i] + bmphhr*mphhr[i]
+  }
+  
+  b0 ~ dnorm(0 , 0.001)
+  bgen ~ dnorm(0, 0.001)
+  bbmi ~ dnorm(0, 0.001)
+  brpe ~ dnorm(0, 0.001)
+  bhr ~ dnorm(0, 0.001)
+  bmph ~ dnorm(0, 0.001)
+  bmphhr ~ dnorm(0, .001)
+  
+  prec <- 1/vv
+  vv ~ dgamma(1.5, 0.2)
+  
+  }
+
+"
+#Assing simple names for covariates
+mph <- vo2$MPH
+bmi <- vo2$BMI
+gender <- vo2$Gender
+y <- vo2$MaxVO2ML
+rpe <- vo2$RPE
+hr <- vo2$HR
+age <- vo2$Age1
+
+
+# Standardize the covariates
+mph <- (mph-mean(mph))/sd(mph)
+bmi <- (bmi-mean(bmi))/sd(bmi)
+gender <- (gender-mean(gender))/sd(gender)
+rpe <- (rpe-mean(rpe))/sd(rpe)
+age <- (age-mean(age))/sd(age)
+hr <- (hr-mean(hr))/sd(hr)
+mphhr <- mph*hr
+mphhr = (mphhr - mean(mphhr))/sd(mphhr)
+
+
+
+
+
+writeLines(mdl3, 'vo2_v3.txt')
+
+#What to use
+data.jags <- c('y', 'gender', 'bmi', 'rpe', 'mph', 'hr', 'mphhr')
+
+#What to call it in the output
+parms.jags <- c('b0', "brpe", 'bgen', 'bbmi', 'bmph', 'vv', 'bhr', 'bmphhr')
+
+vo2_v3.sim <- jags(data= data.jags, parameters.to.save = parms.jags,
+                  model.file = 'vo2_v3.txt', inits = NULL,
+                  n.iter = 6000, n.thin = 1, n.chains = 4,
+                  n.burnin = 1000)
+
+
+vo2_v3.sim
+```
+
+
+# 5
+I prefer the last model because it has the lowest DIC. Adding the interaction term is worth it.
+
+
+# 6 SAS code works, doesn't knit.
+
+
+ library(SASmarkdown)
+
+saspath <- "C:/Program Files/SASHome/SASFoundation/9.4/sas.exe"
+sasopts <- "-nosplash -ls 75"
+knitr::opts_chunk$set(engine="sas", engine.path=saspath,
+        engine.opts=sasopts, comment=NA)
+
+knitr::opts_chunk$get()$engine
+knitr::opts_chunk$get()$engine.path
+knitr::opts_chunk$get()$engine.opts
+
+
+
+
+# 1 Sas
+DIC is 756.5
+
+
+
+
+data vo2;
+	infile 'C:/Users/nateh/Documents/Stat 451/vo2.dat';
+ 	input ID Gender Age BMI MPH HR RPE MAXVO2ML;
+run;
+
+proc standard data=vo2 out=vo2 mean=0 std=1;
+var ID Gender Age BMI MPH HR RPE:;
+run;
+
+ 
+proc mcmc data = vo2 
+	nbi = 30000 nmc = 300000 thin = 30 
+	outpost = 'C:/Users/nateh/Documents/Stat 451/MLRHW4.sas7bdat' dic propcov=quanew  
+    monitor=(_parms_) stats = all;
+parms b0 0;
+parms bmph 0;
+parms bage 0;
+parms bhr 0;
+parms brpe 0;
+parms bgen 0;
+parms bbmi 0;
+parms vv 1.5;
+prior b0 ~ normal(0, var = 1000);
+prior bmph: ~ normal(0, var = 1000);
+prior bage: ~ normal(0, var = 1000);
+prior bhr: ~ normal(0, var = 1000);
+prior brpe: ~ normal(0, var = 1000);
+prior bbmi: ~ normal(0, var = 1000);
+prior bgen: ~ normal(0, var = 1000);
+prior vv ~ gamma(1.5, scale = 5);
+mu = b0 +  bgen*Gender + bbmi*BMI + brpe*RPE + bhr*HR + bmph*MPH + bage*Age;
+model MAXVO2ML ~ normal(mu, var = vv);
+run;
+
+
+# 2 
+Model without age, DIC is 755.1
+
+
+data vo2;
+	infile 'C:/Users/nateh/Documents/Stat 451/vo2.dat';
+ 	input ID Gender Age BMI MPH HR RPE MAXVO2ML;
+run;
+
+proc standard data=vo2 out=vo2 mean=0 std=1;
+var ID Gender Age BMI MPH HR RPE:;
+run;
+
+ 
+proc mcmc data = vo2 
+	nbi = 30000 nmc = 300000 thin = 30 
+	outpost = 'C:/Users/nateh/Documents/Stat 451/MLRHW4_2.sas7bdat' dic propcov=quanew  
+    monitor=(_parms_);
+parms b0 0;
+parms bmph 0;
+parms bhr 0;
+parms brpe 0;
+parms bgen 0;
+parms bbmi 0;
+parms vv 1.5;
+prior b0 ~ normal(0, var = 1000);
+prior bmph: ~ normal(0, var = 1000);
+prior bhr: ~ normal(0, var = 1000);
+prior brpe: ~ normal(0, var = 1000);
+prior bbmi: ~ normal(0, var = 1000);
+prior bgen: ~ normal(0, var = 1000);
+prior vv ~ gamma(1.5, scale = 5);
+mu = b0 +  bgen*Gender + bbmi*BMI + brpe*RPE + bhr*HR + bmph*MPH;
+model MAXVO2ML ~ normal(mu, var = vv);
+run;
+
+
+# 3 Sas 
+2nd model is better, lower DIC
+
+# 4 SAS
+Model without age, with mphhr. DIC is 753.6
+
+data vo2;
+	infile 'C:/Users/nateh/Documents/Stat 451/vo2.dat';
+ 	input ID Gender Age BMI MPH HR RPE MAXVO2ML;
+run;
+
+proc standard data=vo2 out=vo2 mean=0 std=1;
+var ID Gender Age BMI MPH HR RPE:;
+run;
+
+ 
+proc mcmc data = vo2 
+	nbi = 30000 nmc = 300000 thin = 30 
+	outpost = 'C:/Users/nateh/Documents/Stat 451/MLRHW4_3.sas7bdat' dic propcov=quanew  
+    monitor=(_parms_);
+parms b0 0;
+parms bmph 0;
+parms bhr 0;
+parms brpe 0;
+parms bgen 0;
+parms bbmi 0;
+parms binteraction 0;
+parms vv 1.5;
+prior b0 ~ normal(0, var = 1000);
+prior bmph: ~ normal(0, var = 1000);
+prior bhr: ~ normal(0, var = 1000);
+prior brpe: ~ normal(0, var = 1000);
+prior bbmi: ~ normal(0, var = 1000);
+prior bgen: ~ normal(0, var = 1000);
+prior binteraction ~ normal(0, var = 1000);
+prior vv ~ gamma(1.5, scale = 5);
+mu = b0 +  bgen*Gender + bbmi*BMI + brpe*RPE + bhr*HR + bmph*MPH + binteraction*(MPH*HR);
+model MAXVO2ML ~ normal(mu, var = vv);
+run;
+
+
+# 5 SAS
+The results are the same, the third model is the best.

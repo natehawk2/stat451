@@ -1,0 +1,525 @@
+---
+title: "Hawkins Exam 1"
+author: "Stat 451"
+date: "2/10/2021"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+
+For the first set of problems use the data file 'exam1-1.dat'.  There are 24 data points in 8 treatments. We will
+assume the likelihood for the data is normal.
+You should assume that the variance is homoskedastic across
+treatments (that is, the variance is the same in all the treatments). 
+
+Use the following priors: Normal(mean=5,sd=100) for the cell means, and a gamma(shape=1.5,rate=.5) for
+the variance.  Besides examining the posteriors of the eight cell means and the variance, you will also be 
+examining three other functions of the parameters: (1) the average of the first four cell means, (2) the
+average of the last four cell means, and (3) the average of the last four cell means 
+minus the average of the first four cell means.
+
+1.  Write the JAGS code necessary to produce posterior chains for the eight cell means and the variance.  Put a set.seed(1234)
+command in the file prior to running the JAGS code so that we will all get the same answers.  Run 4 chains with 11000 iterations
+per chain, a burnin of 1000 and thin by 4.  This will result in 10000 samples. Print out the JAGS 
+output file.
+
+Read in Data
+```{r}
+set1 <- read.table("exam1-1.dat", header = TRUE)
+
+```
+Run Anova
+```{r}
+library(R2jags)
+set.seed(1234)
+
+mdl <- "
+model {
+
+  for(i in 1:24){
+    y[i] ~ dnorm(mu[tmt[i]],1/s2)
+  }
+  
+  for(i in 1:8){
+    mu[i] ~ dnorm(5, 0.0001)
+  }
+  
+  first4 = sum(mu[1] + mu[2] + mu[3] + mu[4])/4
+  last4 = sum(mu[5] + mu[6] + mu[7] + mu[8])/4
+  diff = last4-first4
+  s2 ~ dgamma(1.5, .5)
+  
+
+}
+"
+# curve(dnorm(x, 5 , sqrt(10000)), from = -150, to = 200)
+# curve(dgamma(x, 1.5, .5))
+
+tmt <- set1$tmt
+y <- set1$y
+
+writeLines(mdl, 'exam1.txt')
+
+data.jags <- c('y','tmt')
+parms <- c('mu', 's2', 'first4', 'last4', 'diff')
+
+exam1.sim <- jags(data = data.jags, inits = NULL,
+               parameters.to.save = parms,
+               model.file = 'exam1.txt',
+               n.iter = 11000,
+               n.burnin = 1000,
+               n.chains = 4,
+               n.thin = 4)
+
+# Here is the jags output file, it has 10000 samples
+exam1.sim
+
+
+```
+
+
+2.  Using coda verify that the chains produced for the eight cell means, the variance, and the three functions of 
+the parameters described above are appropriate for further analysis by showing that the effective sample
+size for each chain exceeds 5000.
+
+The effective sizes for the difference, first4, last4, mus, and variance are all above 5000 so we are good.
+```{r}
+library(coda)
+
+sims <- as.mcmc(exam1.sim)
+chains <- as.matrix(sims)
+sims <- as.mcmc(chains)
+
+effectiveSize(sims)
+```
+
+
+3. Using coda verify that the chains produced for the eight cell means, the variance, and the three functions of 
+the parameters described above are appropriate for further analysis by showing that the Raftery-Lewis diagnostic
+for each chain is smaller than 3.
+
+
+Using Ratery-Lewis, the dependence factor of the 3 functions, the mus, and the variance are all below 3.
+```{r}
+library(coda)
+raftery.diag(sims)
+```
+
+
+4. Produce the trace plot for the mean parameter of treatment 1.
+
+Trace plot of mu1 shows no trends.
+```{r}
+
+mu1 <- chains[,5]
+plot(mu1, type = 'l', main = "Trace Plot of mu1")
+```
+
+
+5. Produce the density plot for the variance parameter.
+
+```{r}
+plot(density(chains[,13]), main = "Density Plot of Variance")
+
+```
+
+
+6. What is the equal tail 95\% posterior probability interval of the variance.
+
+95% Equal tail posterior probability interval is (1.17, 3.55)
+```{r}
+library(bayestestR)
+ci(sims, method = "ETI")
+
+plot(density(chains[,13]), main = "Density Plot of Variance with Equal Tail Interval")
+abline(v =1.17, col = 'blue')
+abline(v= 3.55, col = 'blue')
+```
+
+
+7. What is the highest posterior density 95\% interval of the variance.
+
+highest posterior density of the 95% interval is (0.97, 3.19)
+```{r}
+plot(density(chains[,13]), main = "Density Plot of Variance with Highest Posterior Density Interval")
+abline(v = 0.97, col = 'red')
+abline(v = 3.19, col = 'red')
+
+ci(sims, method = "HDI")
+```
+
+
+8. Say we want to know if the mean for treatment 1 is different than the mean of treatment 8.  Compute the
+chain that represents the difference of the mean of treatment 8 minus the mean of treatment 1.  Plot
+the density of this chain.
+
+```{r}
+mu1 <- chains[,5]
+mu8 <- chains[,12]
+
+diffmus <- mu8-mu1
+plot(density(diffmus), main = "Difference between mu8 and mu1", col = 'purple', lwd = 3)
+```
+
+
+9. Would you conclude the mean of treatment 8 exceeds the mean of treatment 1?  Why?
+
+Yes I would conclude tha mu8 > mu1 because the density plot of the differences shows it's positive and doesn't span 0. A 95% quantile confirms that conclusion.
+
+```{r}
+quantile(diffmus, probs = c(.025, .975))
+```
+
+
+10. Compute pD using the JAGS formula using one of the chains you have already produced.  That is, you are 
+computing pD yourself, not just reading it from the output.
+
+to calculate pD, I take the variance of the deviance and divide it by 2. This gives me 13.82. Which matches the output.
+```{r}
+var(chains[,1])/2
+
+```
+
+
+11. How is the DIC for the model computed.
+
+DIC is pD plus the mean deviance.
+
+```{r}
+mean(chains[,1]) + var(chains[,1])/2
+```
+
+
+12. Say the first four treatment means represent 4 levels of a treatment.  We'll call this treatment A.  Say
+treatment means five through eight represent 4 levels of another treatment that we will call treatment B.
+Plot the posterior density for the combination of the parameters that you would use to test the assertion
+that treatment B yields higher responses that treatment A.
+
+```{r}
+colnames(chains)
+last4 <- chains[,4]
+first4 <- chains[,3]
+plot(density(last4-first4), main = "Posterior Density Plot of Last4 (B) - First4 (A)")
+```
+
+
+13.  Would you conclude treatment B yields higher responses than treatment A?  Why?
+
+Yes I conclude that treatment B yields a higher response than treatment A because the density plot of the differences is well above 0, centered around 2.5. So the difference is positive for sure.
+
+
+
+
+B
+
+For the next set of problems use the data file 'exam1-3.dat'.  Use a normal likelihood as you would with a standard
+frequentist multiple regression.
+For these data we are attempting to predict Defective using
+Temperature, Density, and Rate.  Use the square root of Defective as the dependent variable, and
+please standardize all variables (including the square root of Defective) prior to running any model.
+
+14. For the model include only main effects for Temperature, Density, and Rate.  Write code to 
+solve the problem in Proc MCMC. 
+Please include the Proc MCMC code in your output file so that it is readable.
+Produce posterior chains for the parameters you are estimating.  Use normal priors for the $\beta$ parameters, N(0,var=100),
+ and use a gamma with shape of 1.1 and a scale of 1 for the
+variance.  Also, set the seed value as 1234 so all output will be identical.
+Use 350000 for the number of iterations, 50000 for the burn in iterations, and thin by 50. 
+Compute the DIC, Raftery-Louis diagnostics, and the effective sample size.
+
+
+Test my sas work in r
+# ```{r}
+# 
+# q2 <- read.table('standardq2.dat', header = TRUE)
+# 
+# 
+# 
+# y <- q2$sqdef
+# Temperature <- q2$Temperature
+# Density <- q2$Density
+# Rate <- q2$Rate
+# 
+# library(R2jags)
+# mdl3 <- "
+#   model {
+#   
+#   for(i in 1:30){
+#     y[i] ~ dnorm(mu[i], prec)
+#     mu[i] <- b0 + btemp*Temperature[i] + bdensity*Density[i] + brate*Rate[i]
+#   }
+#   
+#   b0 ~ dnorm(0 , 0.01)
+#   btemp ~ dnorm(0, 0.01)
+#   bdensity ~ dnorm(0, 0.01)
+#   brate ~ dnorm(0, 0.01)
+#  
+#   
+#   prec <- 1/vv
+#   vv ~ dgamma(1.1, 1)
+#   
+#   }
+# 
+# "
+# 
+# 
+#   
+# 
+# 
+# 
+# writeLines(mdl3, 'test')
+# 
+# #What to use
+# data.jags <- c('y', 'Temperature', 'Density', 'Rate')
+# 
+# #What to call it in the output
+# parms.jags <- c('b0', "btemp", "bdensity", "brate")
+# 
+# vo2_v3.sim <- jags(data= data.jags, parameters.to.save = parms.jags,
+#                   model.file = 'test', inits = NULL,
+#                   n.iter = 350000, n.thin = 50, n.chains = 4,
+#                   n.burnin = 50000)
+# 
+# 
+# sims2 <- as.mcmc(vo2_v3.sim)
+# effectiveSize(sims2)
+# check.lm <- lm(data = q2, formula = sqdef ~ Temperature + Density + Rate)
+# summary(check.lm)
+# ```
+
+
+
+```{r}
+q2 <- read.table('exam1-3.dat', header = TRUE)
+q2
+q2$sqdef <- sqrt(q2$Defective)
+
+q2$sqdef <- (q2$sqdef - mean(q2$sqdef))/sd(q2$sqdef)
+q2$Temperature <- (q2$Temperature - mean(q2$Temperature))/sd(q2$Temperature)
+q2$Density <- (q2$Density - mean(q2$Density))/sd(q2$Density)
+q2$Rate <- (q2$Rate - mean(q2$Rate))/sd(q2$Rate)
+q2$Case <- (q2$Case - mean(q2$Case))/sd(q2$Case)
+
+q2 <- cbind(seq(1,30), q2)
+q2
+write.table(q2[,c(-6)], 'standardq2.dat')
+```
+
+# Sas Code. It runs, just doesn't knit.
+
+ library(SASmarkdown)
+
+saspath <- "C:/Program Files/SASHome/SASFoundation/9.4/sas.exe"
+sasopts <- "-nosplash -ls 75"
+knitr::opts_chunk$set(engine="sas", engine.path=saspath,
+        engine.opts=sasopts, comment=NA)
+
+knitr::opts_chunk$get()$engine
+knitr::opts_chunk$get()$engine.path
+knitr::opts_chunk$get()$engine.opts
+
+data q2;
+	infile 'C:/Users/nateh/Documents/Stat 451/standardq2.dat';
+ 	input yes rep Case Temperature Density Rate sqdef;
+run;
+
+
+proc mcmc data = q2 
+	nbi = 50000 nmc = 350000 thin = 50 seed = 1234
+	outpost = 'C:/Users/nateh/Documents/Stat 451/exam1_q2.sas7bdat' dic propcov=quanew  
+    monitor=(_parms_) stats = all diagnostics = all;
+parms b0 0;
+parms btemp 0;
+parms bdensity 0;
+parms brate 0;
+parms vv 1.1;
+
+prior b0 ~ normal(0, var = 100);
+prior btemp: ~ normal(0, var = 100);
+prior bdensity: ~ normal(0, var = 100);
+prior brate: ~ normal(0, var = 100);
+
+prior vv ~ gamma(shape = 1.1, scale = 1.0);
+
+mu = b0 + btemp*Temperature + bdensity*Density + brate*Rate;
+model sqdef ~ normal(mu, var = vv);
+run;
+
+
+15.  Verify that the chains you have produced have converged appropriately by examining (and reproducing) the effective sample size, and the
+Raftery-Lewis diagnostics.  Produce these diagnostics in the SAS output file. Since SAS
+produces output that is 132 characters in width by default, you may need to change the output width to
+fit on the pages you will be handing in.
+
+Thinning by 50 is a little much in SAS. I assume you didn't want us to thin that much. But I ran it anyways with thin = 50 to not lose points. Because of that thin, the sample sizes are a little bit small. But the raftery-ewis diagnostics are good. None of the trace plots show trends or patterns so I conclude that they converge.
+
+Raftery-Lewis Diagnostics
+
+b0		   0.9963
+btemp	   	1.2763
+bdensity	1.2763
+brate	    1.0443
+vv		    0.9848
+
+```{r}
+library(haven)
+sasoutput <- read_sas('exam1_q2.sas7bdat')
+sims2 <- as.mcmc(sasoutput)
+effectiveSize(sasoutput)
+dim(sasoutput)
+```
+
+16.  In the SAS output file find 95% highest posterior density intervals for the parameters you have estimated.
+
+
+       HPD Interval
+
+b0        -0.0982      0.1006
+btemp      0.0197      0.7711
+bdensity  -0.8350     -0.0494
+brate     -0.1226      0.3968
+vv         0.0382      0.1251
+
+For the last set of problems, you have been brought data by an anthropologist.  She has found five adult skeletons of ancient 
+humanoids.  She has been studying the ratio of the length of humerus (upper arm bone) to the length of the 
+femur (thigh bone) in primates.  For monkeys she knows that ratio is about 0.95.  For modern man, the ratio is about 0.72.
+The ratios for the five adult skeletons she has found are as follows: 0.857, 0.824, 0.820, 0.875, 0.844.  She 
+is interested in the probability that the population mean ratio for the group of people whose skeletons she has 
+found is !between 0.80 and 0.90. 
+
+For your likelihood, you should be aware that the appropriate support for these
+data is between 0 and 1. So we will use a beta likelihood. You may remember the beta distribution from 251 when
+you worked on binomial (bernoulli) data. You should also know that these ratios range from about 0.70 to 0.98.
+The parameters of a beta must be positive, so we will use gamma priors for the parameters.  If the beta is
+parameterized with (a,b), then use a gamma(shape=1,rate=.2) for a, and a gamma(shape=1.5,rate=1) for b.
+
+17. Since you know the likelihood and the prior distributions for the parameters, you can draw values from the
+prior predictive.  Draw 1000 values from the prior predictive and plot a histogram of the values
+drawn from the prior predictive.  Remember that the values
+must be between 0 and 1.
+
+```{r}
+
+ppred <- NULL
+for(i in 1:1000){
+  a <- rgamma(1, 1, 0.2)
+  b <- rgamma(1, 1.5, 1)
+  ppred[i] <- rbeta(1, a, b)
+}
+
+hist(ppred, main = "Histogram of Prior Predictive")
+
+```
+
+
+18. Write code in JAGS to address the problem.  Use 20000 burnin and 100000 iterations, thin by 10 and produce 5 chains.  This will
+give you 40000 MCMC draws of the posterior.  Print the summary of the simulation.  
+
+
+
+```{r}
+set.seed(1234)
+
+library(R2jags)
+
+mdl4 <- "
+  model{
+  
+  for(i in 1:5){
+    y1[i] ~ dnorm(mu, 1/vv)
+  }
+  
+   
+  # Priors
+  a ~ dgamma(1, 0.2)
+  b ~ dgamma(1.5, 1)
+  
+  mu = a/(a+b)
+  vv = (a*b)/((a+b)^2 * (a+b+1))
+  
+}"
+
+writeLines(mdl4, 'mod4output')
+data.jags <- list(
+    y1 =c(0.857, 0.824, 0.820, 0.875, 0.844)
+  )
+
+parms.jags <- c("mu", "vv")
+
+
+beta.sim <- jags(data= data.jags, parameters.to.save = parms.jags,
+                  model.file = 'mod4output', inits = NULL,
+                  n.iter = 100000, n.thin = 10, n.chains = 5,
+                  n.burnin = 20000)
+
+
+beta.sim
+sims3 <- as.mcmc(beta.sim)
+chains3 <- as.matrix(sims3)
+sims3 <- as.mcmc(chains3)
+
+
+colnames(chains3)
+post.draws <- chains3[,2]
+post.vv <- chains3[,3]
+
+
+```
+
+
+
+
+
+19.  Verify that the chains you have produced have converged appropriately and have enough information to use to make inference by examining (and reporting) the effective sample size.  Effective sample sizes should exceed 5000.
+
+Effective sample size for deviance is 32,018
+Effective Sample size for mu is 40000
+Effective sample size for vv is 36,194.9
+```{r}
+effectiveSize(sims3)
+```
+
+
+20. Verify that the chains you have produced have converged appropriately and have enough information to use to make inference by examining (and reporting) the Raftery-Louis diagnostic.  Raftery-Louis diagnostics should be less than 3.
+
+RLD for deviance is 1.13
+RLD for mu is 0.998
+RLD for vv is 1.070
+```{r}
+raftery.diag(sims3)
+```
+
+
+21.  Using your output chains, draw 40000 values from the posterior predictive.  Plot the posterior predictive density and the histogram
+of the prior predictive density on the same set of axes.
+
+```{r}
+popdat1 <- NULL
+for(i in 1:40000){
+            #Noise in mean, #Noise in Error
+  popdat1[i] <- post.draws[i] + rnorm(1,0,sqrt(post.vv[i]))
+}
+
+hist(ppred, freq = FALSE, ylim = c(0,4), xlim = c(0,1), col = "lightblue" ,main = "Histogram of Prior Pred vs Density of Posterior Pred")
+lines(density(popdat1), col = "blue", lwd = 3)
+```
+
+
+22.  Plot the posterior density of the mean ratio which would be computed as a/(a+b).  
+
+```{r}
+plot(density(post.draws), col = "green", lwd = 3, main = "Posterior Density of Mean Ratio")
+```
+
+
+23. What is the 
+probability the ratio for the population mean given the data from these five skeletons is between 0.80 and 0.90?
+
+There is 86% posterior probability that the ratio for the population mean is between 0.8 and 0.9.
+```{r}
+mean(post.draws[post.draws >= .8 & post.draws <= .9])
+```
+
+
